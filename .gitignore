@@ -1,0 +1,17 @@
+# Build output
+/bin/
+
+# Go test/coverage artifacts
+*.out
+coverage.*
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Personal agent/tool state
+.claude/projects/
+.claude/settings.local.json
+_bmad/*.user.toml
+_bmad/custom/*.user.toml

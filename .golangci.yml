@@ -1,0 +1,15 @@
+version: "2"
+
+# golangci-lint is the agreed lint runner for opsx (see AGENTS.md).
+# The v2 "standard" linter set is enabled by default: errcheck, govet,
+# ineffassign, staticcheck, unused.
+linters:
+  settings:
+    errcheck:
+      # Writes to stdout/stderr (cobra command output, status tables, prompts)
+      # have no actionable error path; excluding the fmt.Fprint* family keeps the
+      # AGENTS.md "never ignore errors with _" rule meaningful for real errors.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
