@@ -15,3 +15,13 @@ coverage.*
 .claude/settings.local.json
 _bmad/*.user.toml
 _bmad/custom/*.user.toml
+
+# Local opsx config & secrets (never commit real values; keep the example)
+/config.yaml
+/config.yml
+config.local.*
+.opsx/
+
+# AWS credentials accidentally dropped into the repo
+**/credentials
+**/.aws/
