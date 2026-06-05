@@ -191,7 +191,7 @@ func authMethodIDFromCfg(cfg map[string]any) string {
 			}
 		}
 	}
-	return strVal(cfg, "authMethodId")
+	return strVal(cfg, "AuthMethodId")
 }
 
 func applyHeaders(req *http.Request, headers map[string]string) {
