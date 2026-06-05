@@ -96,6 +96,30 @@ func (p *EntraSAMLProvider) WithHTTPClient(client *http.Client) *EntraSAMLProvid
 	return p
 }
 
+func (p *EntraSAMLProvider) debugf(format string, args ...any) {
+	if !p.Auth.Entra.Debug || p.Stderr == nil {
+		return
+	}
+	fmt.Fprintf(p.Stderr, "opsx entra debug: "+format+"\n", args...)
+}
+
+func safeURLForLog(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "<invalid-url>"
+	}
+	u.RawQuery = ""
+	u.Fragment = ""
+	u.User = nil
+	return u.String()
+}
+
+func debugf(debugLog func(string, ...any), format string, args ...any) {
+	if debugLog != nil {
+		debugLog(format, args...)
+	}
+}
+
 var reConfig = regexp.MustCompile(`(?s)\$Config=(\{.*?\});`)
 
 func parseConfig(body string) (map[string]any, error) {
@@ -112,7 +136,7 @@ func parseConfig(body string) (map[string]any, error) {
 
 var reInput = regexp.MustCompile(`(?is)<input\b(?:[^>"']*(?:"[^"]*"|'[^']*')?)*\/?>`)
 var reName = regexp.MustCompile(`(?i)\bname="([^"]*)"`)
-var reValue = regexp.MustCompile(`(?i)\bvalue=(?:"([^"]*)"|'([^']*)'|([^\s/>]*))`)
+var reValue = regexp.MustCompile(`(?i)\bvalue="([^"]*)"`)
 
 func parseInputs(body string) map[string]string {
 	out := map[string]string{}
@@ -176,7 +200,7 @@ func applyHeaders(req *http.Request, headers map[string]string) {
 	}
 }
 
-func doJSON(ctx context.Context, client *http.Client, endpoint string, payload any, headers map[string]string) (map[string]any, error) {
+func doJSON(ctx context.Context, client *http.Client, endpoint string, payload any, headers map[string]string, debugLog func(string, ...any)) (map[string]any, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("json marshal payload: %w", err)
@@ -189,8 +213,10 @@ func doJSON(ctx context.Context, client *http.Client, endpoint string, payload a
 	applyHeaders(req, headers)
 	resp, err := client.Do(req)
 	if err != nil {
+		debugf(debugLog, "http POST url=%s error=%v", safeURLForLog(endpoint), err)
 		return nil, fmt.Errorf("do http request: %w", err)
 	}
+	debugf(debugLog, "http POST url=%s status=%d", safeURLForLog(endpoint), resp.StatusCode)
 
 	var out map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -203,7 +229,7 @@ func doJSON(ctx context.Context, client *http.Client, endpoint string, payload a
 	return out, nil
 }
 
-func doForm(ctx context.Context, client *http.Client, endpoint string, values url.Values, headers map[string]string) (string, error) {
+func doForm(ctx context.Context, client *http.Client, endpoint string, values url.Values, headers map[string]string, debugLog func(string, ...any)) (string, error) {
 	encoded := values.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(encoded))
 	if err != nil {
@@ -213,8 +239,10 @@ func doForm(ctx context.Context, client *http.Client, endpoint string, values ur
 	applyHeaders(req, headers)
 	resp, err := client.Do(req)
 	if err != nil {
+		debugf(debugLog, "http POST url=%s error=%v", safeURLForLog(endpoint), err)
 		return "", fmt.Errorf("do http request: %w", err)
 	}
+	debugf(debugLog, "http POST url=%s status=%d", safeURLForLog(endpoint), resp.StatusCode)
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		_ = resp.Body.Close()
@@ -226,7 +254,7 @@ func doForm(ctx context.Context, client *http.Client, endpoint string, values ur
 	return string(b), nil
 }
 
-func fetchFederationURL(ctx context.Context, client *http.Client, _ string, username string, bootstrapCfg map[string]any) (formSubmitURL string, cfg map[string]any, err error) {
+func fetchFederationURL(ctx context.Context, client *http.Client, _ string, username string, bootstrapCfg map[string]any, debugLog func(string, ...any)) (formSubmitURL string, cfg map[string]any, err error) {
 	credTypeURL := strVal(bootstrapCfg, "urlGetCredentialType")
 	if credTypeURL == "" {
 		return "", nil, fmt.Errorf("fetchFederationURL: urlGetCredentialType missing from bootstrapCfg")
@@ -242,7 +270,7 @@ func fetchFederationURL(ctx context.Context, client *http.Client, _ string, user
 		"originalRequest":      strVal(bootstrapCfg, "sCtx"),
 		"flowToken":            strVal(bootstrapCfg, "sFT"),
 	}
-	result, err := doJSON(ctx, client, credTypeURL, payload, headers)
+	result, err := doJSON(ctx, client, credTypeURL, payload, headers, debugLog)
 	if err != nil {
 		return "", nil, fmt.Errorf("fetchFederationURL: %w", err)
 	}
@@ -259,16 +287,16 @@ func fetchFederationURL(ctx context.Context, client *http.Client, _ string, user
 	return formSubmitURL, bootstrapCfg, nil
 }
 
-func adfsAuthenticate(ctx context.Context, client *http.Client, formSubmitURL, username string, password []byte, headers map[string]string) (map[string]string, error) {
+func adfsAuthenticate(ctx context.Context, client *http.Client, formSubmitURL, username string, password []byte, headers map[string]string, debugLog func(string, ...any)) (map[string]string, error) {
 	values := url.Values{
-		"Username":   {username},
+		"UserName":   {username},
 		"Password":   {string(password)},
 		"AuthMethod": {"FormsAuthentication"},
 	}
 	for i := range password {
 		password[i] = 0
 	}
-	body, err := doForm(ctx, client, formSubmitURL, values, headers)
+	body, err := doForm(ctx, client, formSubmitURL, values, headers, debugLog)
 	if err != nil {
 		return nil, err
 	}
@@ -279,13 +307,13 @@ func adfsAuthenticate(ctx context.Context, client *http.Client, formSubmitURL, u
 	return inputs, nil
 }
 
-func microsoftRelay(ctx context.Context, client *http.Client, msLoginURL, myAppsURL string, inputs map[string]string, headers map[string]string) (string, error) {
+func microsoftRelay(ctx context.Context, client *http.Client, msLoginURL, myAppsURL string, inputs map[string]string, headers map[string]string, debugLog func(string, ...any)) (string, error) {
 	v1 := url.Values{}
 	for k, v := range inputs {
 		v1.Set(k, v)
 	}
 	v1.Set("AuthMethod", "FormsAuthentication")
-	body1, err := doForm(ctx, client, msLoginURL, v1, headers)
+	body1, err := doForm(ctx, client, msLoginURL, v1, headers, debugLog)
 	if err != nil {
 		return "", fmt.Errorf("microsoftRelay step1: %w", err)
 	}
@@ -302,14 +330,14 @@ func microsoftRelay(ctx context.Context, client *http.Client, msLoginURL, myApps
 	for k, val := range merged {
 		v2.Set(k, val)
 	}
-	body2, err := doForm(ctx, client, myAppsURL, v2, headers)
+	body2, err := doForm(ctx, client, myAppsURL, v2, headers, debugLog)
 	if err != nil {
 		return "", fmt.Errorf("microsoftRelay step2: %w", err)
 	}
 	return body2, nil
 }
 
-func mfaPoll(ctx context.Context, client *http.Client, mfaCfg map[string]any, bootstrapCanary string, headers map[string]string, stderr io.Writer, pollInterval time.Duration) (string, error) {
+func mfaPoll(ctx context.Context, client *http.Client, mfaCfg map[string]any, bootstrapCanary string, headers map[string]string, stderr io.Writer, pollInterval time.Duration, debugLog func(string, ...any)) (string, error) {
 	authMethodID := authMethodIDFromCfg(mfaCfg)
 	sCtx := strVal(mfaCfg, "sCtx")
 	sFT := strVal(mfaCfg, "sFT")
@@ -318,18 +346,20 @@ func mfaPoll(ctx context.Context, client *http.Client, mfaCfg map[string]any, bo
 	endURL := strVal(mfaCfg, "urlEndAuth")
 	postURL := strVal(mfaCfg, "urlPost")
 
+	debugf(debugLog, "mfa begin auth endpoint=%s", safeURLForLog(beginURL))
 	beginResp, err := doJSON(ctx, client, beginURL, map[string]any{
 		"AuthMethodId": authMethodID,
 		"Method":       "BeginAuth",
 		"ctx":          sCtx,
 		"flowToken":    sFT,
-	}, headers)
+	}, headers, debugLog)
 
 	if err != nil {
 		return "", fmt.Errorf("mfaPoll BeginAuth: %w", err)
 	}
 	entropy := strVal(beginResp, "Entropy")
 	fmt.Fprintf(stderr, "Open your Authenticator app and enter the code: %s\n", entropy)
+	debugf(debugLog, "mfa challenge received entropy_present=%t", entropy != "")
 	if v := strVal(beginResp, "Ctx"); v != "" {
 		sCtx = v
 	}
@@ -339,25 +369,28 @@ func mfaPoll(ctx context.Context, client *http.Client, mfaCfg map[string]any, bo
 	if v := strVal(beginResp, "SessionId"); v != "" {
 		sessionID = v
 	}
+	attempt := 0
 	for {
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
 		case <-time.After(pollInterval):
 		}
+		attempt++
 		endResp, err := doJSON(ctx, client, endURL, map[string]any{
 			"Method":       "EndAuth",
 			"AuthMethodId": authMethodID,
 			"Ctx":          sCtx,
 			"FlowToken":    sFT,
 			"SessionId":    sessionID,
-		}, headers)
+		}, headers, debugLog)
 		if err != nil {
 			return "", fmt.Errorf("mfaPoll EndAuth: %w", err)
 		}
 		retry, _ := endResp["Retry"].(bool)
 		success, _ := endResp["Success"].(bool)
 		if retry {
+			debugf(debugLog, "mfa poll attempt=%d retry=true", attempt)
 			if v := strVal(endResp, "Ctx"); v != "" {
 				sCtx = v
 			}
@@ -369,8 +402,10 @@ func mfaPoll(ctx context.Context, client *http.Client, mfaCfg map[string]any, bo
 		if !success {
 			msg := strVal(endResp, "Message")
 			result := strVal(endResp, "ResultValue")
+			debugf(debugLog, "mfa denied attempt=%d", attempt)
 			return "", fmt.Errorf("%w: %s %s", ErrMFADenied, msg, result)
 		}
+		debugf(debugLog, "mfa approved attempt=%d", attempt)
 		if v := strVal(endResp, "Ctx"); v != "" {
 			sCtx = v
 		}
@@ -381,6 +416,7 @@ func mfaPoll(ctx context.Context, client *http.Client, mfaCfg map[string]any, bo
 			sessionID = v
 		}
 
+		debugf(debugLog, "mfa posting final form endpoint=%s", safeURLForLog(postURL))
 		postValues := url.Values{
 			"canary":             {bootstrapCanary},
 			"hideSmsInMfaProofs": {"false"},
@@ -390,10 +426,11 @@ func mfaPoll(ctx context.Context, client *http.Client, mfaCfg map[string]any, bo
 			"login":              {strVal(mfaCfg, "sPOST_Username")},
 			"mfaAuthMethod":      {authMethodID},
 		}
-		samlHTML, err := doForm(ctx, client, postURL, postValues, headers)
+		samlHTML, err := doForm(ctx, client, postURL, postValues, headers, debugLog)
 		if err != nil {
 			return "", fmt.Errorf("mfaPoll Login: %w", err)
 		}
+		debugf(debugLog, "mfa final form received")
 		return samlHTML, nil
 	}
 }
@@ -413,6 +450,7 @@ func extractSAMLResponse(body string) (string, error) {
 //   - all HTTP via p.Client (system proxy); the assertion is never logged.
 func (p *EntraSAMLProvider) FetchAssertion(ctx context.Context, role MasterRole) (string, error) {
 	if assertion := strings.TrimSpace(os.Getenv(EnvSAMLAssertion)); assertion != "" {
+		p.debugf("using assertion escape hatch source=%s", EnvSAMLAssertion)
 		return assertion, nil
 	}
 	if path := strings.TrimSpace(os.Getenv(EnvSAMLAssertionFile)); path != "" {
@@ -421,10 +459,12 @@ func (p *EntraSAMLProvider) FetchAssertion(ctx context.Context, role MasterRole)
 			return "", err
 		}
 		if assertion := strings.TrimSpace(string(data)); assertion != "" {
+			p.debugf("using assertion escape hatch source=%s", EnvSAMLAssertionFile)
 			return assertion, nil
 		}
 		return "", errors.New("SAML assertion file is empty")
 	}
+	p.debugf("starting assertion fetch role=%s", role)
 	username := p.Auth.Entra.Username
 	if strings.TrimSpace(username) == "" {
 		return "", fmt.Errorf("auth.entra.username is not set")
@@ -437,6 +477,7 @@ func (p *EntraSAMLProvider) FetchAssertion(ctx context.Context, role MasterRole)
 	if err != nil {
 		return "", fmt.Errorf("cookie jar: %w", err)
 	}
+	p.debugf("session client initialized")
 	sessionClient := &http.Client{
 		Transport:     p.Client.Transport,
 		CheckRedirect: p.Client.CheckRedirect,
@@ -448,7 +489,8 @@ func (p *EntraSAMLProvider) FetchAssertion(ctx context.Context, role MasterRole)
 		return "", err
 	}
 	defer Zeroize(password)
-	bootstrapURL := fmt.Sprintf("%s/applications/redirecttofederatedapplication.aspx?Operation=LinkedSignIn&appliationId=%s", p.baseURL, appID)
+	bootstrapURL := fmt.Sprintf("%s/applications/redirecttofederatedapplication.aspx?Operation=LinkedSignIn&applicationId=%s", p.baseURL, appID)
+	p.debugf("bootstrap request method=GET url=%s", safeURLForLog(bootstrapURL))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, bootstrapURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("bootstrap request: %w", err)
@@ -465,32 +507,45 @@ func (p *EntraSAMLProvider) FetchAssertion(ctx context.Context, role MasterRole)
 	if err := resp.Body.Close(); err != nil {
 		return "", fmt.Errorf("close bootstrap response body: %w", err)
 	}
+	p.debugf("bootstrap response received status=%d bytes=%d", resp.StatusCode, len(bodyBytes))
 	bootstrapCfg, err := parseConfig(string(bodyBytes))
 	if err != nil {
 		return "", fmt.Errorf("parse bootstrap response body: %w", err)
 	}
+	p.debugf("bootstrap config parsed")
 
-	formSubmitURL, stepCfg, err := fetchFederationURL(ctx, sessionClient, appID, username, bootstrapCfg)
+	formSubmitURL, stepCfg, err := fetchFederationURL(ctx, sessionClient, appID, username, bootstrapCfg, p.debugf)
 	if err != nil {
 		return "", err
 	}
+	p.debugf("federation redirect resolved url=%s", safeURLForLog(formSubmitURL))
 	headers := buildHeaders(stepCfg)
 	pwCopy := make([]byte, len(password))
 	copy(pwCopy, password)
-	inputs, err := adfsAuthenticate(ctx, sessionClient, formSubmitURL, username, pwCopy, headers)
+	inputs, err := adfsAuthenticate(ctx, sessionClient, formSubmitURL, username, pwCopy, headers, p.debugf)
 	if err != nil {
 		return "", err
 	}
-	relayBody, err := microsoftRelay(ctx, sessionClient, p.msLoginURL, p.myAppsURL, inputs, headers)
+	p.debugf("adfs form submitted hidden_fields=%d", len(inputs))
+	relayBody, err := microsoftRelay(ctx, sessionClient, p.msLoginURL, p.myAppsURL, inputs, headers, p.debugf)
 	if err != nil {
 		return "", err
 	}
+	p.debugf("microsoft relay completed response_bytes=%d", len(relayBody))
 	mfaCfg, mfaErr := parseConfig(relayBody)
 	if mfaErr == nil && strVal(mfaCfg, "urlBeginAuth") != "" {
-		relayBody, err = mfaPoll(ctx, sessionClient, mfaCfg, strVal(bootstrapCfg, "canary"), headers, p.Stderr, p.pollInterval)
+		p.debugf("mfa required")
+		relayBody, err = mfaPoll(ctx, sessionClient, mfaCfg, strVal(bootstrapCfg, "canary"), headers, p.Stderr, p.pollInterval, p.debugf)
 		if err != nil {
 			return "", err
 		}
+	} else {
+		p.debugf("mfa not required")
 	}
-	return extractSAMLResponse(relayBody)
+	assertion, err := extractSAMLResponse(relayBody)
+	if err != nil {
+		return "", err
+	}
+	p.debugf("saml assertion extracted")
+	return assertion, nil
 }

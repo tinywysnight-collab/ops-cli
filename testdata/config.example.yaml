@@ -35,6 +35,12 @@ auth:
   entra:
     app_id: "00000000-0000-0000-0000-000000000000" # Entra federated application ID
     username: "operator@example.com" # non-secret; password is prompted, never stored
+    debug: false # set true to log the Entra/ADFS/MFA flow (steps + HTTP status codes) to stderr; URLs are redacted, secrets are never logged
+    # Optional endpoint overrides; leave unset to use built-in defaults.
+    # Fill these in to point at your tenant's real Entra/ADFS endpoints:
+    # base_url: "https://login.example.com"
+    # ms_login_url: "https://login.example.com/login"
+    # myapps_url: "https://myapps.example.com"
   master_roles: # configurable master role NAMES, by mode
     admin: master_admin
     opr: master_AWSOpr

@@ -227,6 +227,9 @@ auth:
 The current provider uses `auth.entra.app_id` directly. Optional Entra endpoint overrides are
 available but omitted from sample config unless non-default Entra endpoints are required. Older
 `auth.entra.tenant_id` and `auth.entra.domain_map` entries are no longer part of the schema.
+Optional `auth.entra.debug` enables stderr troubleshooting logs for the live Entra flow. These logs
+are intentionally step-level and sanitized: endpoints are logged without query strings, and no
+password, cookie, SAML assertion, MFA flow token, session ID, or canary value is emitted.
 
 **G5 — ARN composition (config-driven, zero hardcoded names):**
 - master role ARN  = `arn:aws:iam::{master_account_id}:role/{master_roles[mode]}`
@@ -331,6 +334,9 @@ context propagation, and file permissions.
 - ALL human output (prompts, MFA number-match, logs, errors, status tables) goes to **stderr**.
 - Every other command prints user output to stdout normally, but NEVER prints secrets
   (passwords, tokens, SAML assertions) anywhere.
+- Entra debug logs, when enabled by config, are safe diagnostics only: step names, sanitized
+  endpoints, HTTP status, byte counts, and hidden-field counts. They MUST NOT include request
+  bodies, cookies, SAML assertions, MFA flow tokens, session IDs, canary values, or query strings.
 
 ### Naming Patterns (Go)
 

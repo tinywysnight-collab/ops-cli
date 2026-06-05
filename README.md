@@ -103,6 +103,11 @@ left out of the sample config unless an environment needs non-default Entra endp
 flow uses top-level `auth.entra.app_id`; older `tenant_id` / `domain_map` config entries are no
 longer part of the schema.
 
+For live Entra troubleshooting, set optional `auth.entra.debug: true`. Debug logs go to stderr and
+only include sanitized step, endpoint, status, and count information; passwords, cookies, SAML
+assertions, MFA flow tokens, session IDs, and canary values are not logged. This field is omitted
+from the sample config because the default is quiet.
+
 ## Daily usage
 
 ```bash

@@ -29,6 +29,7 @@ auth:
   entra:
     app_id: "a"
     username: "u"
+    debug: true
     base_url: "https://login.example.com"
     ms_login_url: "https://ms.example.com/login"
     myapps_url: "https://apps.example.com/myapps"
@@ -59,6 +60,7 @@ func TestLoad(t *testing.T) {
 		require.Equal(t, "ap-southeast-2", c.Clusters["dev-syd"].Region)
 		require.Equal(t, "dev-eks-cluster-01", c.Clusters["dev-syd"].Name)
 		require.Equal(t, "000000000000", c.Auth.MasterAccountID)
+		require.True(t, c.Auth.Entra.Debug)
 		require.Equal(t, "https://login.example.com", c.Auth.Entra.BaseURL)
 		require.Equal(t, "https://ms.example.com/login", c.Auth.Entra.MSLoginURL)
 		require.Equal(t, "https://apps.example.com/myapps", c.Auth.Entra.MyAppsURL)
@@ -103,6 +105,7 @@ func TestExampleConfig(t *testing.T) {
 		require.Empty(t, c.Auth.Entra.BaseURL)
 		require.Empty(t, c.Auth.Entra.MSLoginURL)
 		require.Empty(t, c.Auth.Entra.MyAppsURL)
+		require.False(t, c.Auth.Entra.Debug)
 	})
 }
 

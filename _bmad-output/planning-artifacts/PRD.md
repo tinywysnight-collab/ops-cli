@@ -104,6 +104,7 @@ auth:
 - `admin` vs `AWSOpr` mode is **not** stored here — it is a per-terminal runtime property (one config serves both modes).
 - `auth.region` is the master STS region and default citizen STS region; `accounts.<alias>.region` optionally overrides citizen STS for that account. These are distinct from each cluster's EKS region.
 - `auth.entra.base_url`, `auth.entra.ms_login_url`, and `auth.entra.myapps_url` are optional endpoint overrides and default to `https://auth.entra.io`; they are intentionally left out of the sample config unless an environment needs non-default Entra endpoints. The login flow uses top-level `auth.entra.app_id`; older `tenant_id` / `domain_map` config entries are no longer part of the schema.
+- `auth.entra.debug` is an optional troubleshooting flag, defaulting to `false`. When enabled, Entra logs go to stderr and include only sanitized step/endpoint/status/count details, never passwords, cookies, SAML assertions, MFA tokens, session IDs, or canary values.
 - Citizen profiles are named `[<alias>.<mode>]` (e.g. `[dev.admin]`, `[prod.opr]`) so the same account can be active in both modes without overwriting.
 
 ---

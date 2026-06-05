@@ -22,6 +22,7 @@ Validation MUST additionally enforce well-formedness of values interpolated into
 - every `account_id` in account entries and `auth.master_account_id` MUST be exactly 12 ASCII digits;
 - every cluster `region` MUST be non-empty after trimming and MUST NOT contain whitespace.
 - optional Entra endpoint overrides `auth.entra.base_url`, `auth.entra.ms_login_url`, and `auth.entra.myapps_url` MUST be absolute `http` or `https` URLs when set.
+- optional `auth.entra.debug` MUST decode as a boolean and default to `false` when omitted.
 
 #### Scenario: Account missing account_id
 - **WHEN** an account entry has an empty `account_id`
@@ -43,6 +44,11 @@ Validation MUST additionally enforce well-formedness of values interpolated into
 #### Scenario: Malformed Entra endpoint URL rejected
 - **WHEN** an Entra endpoint override is blank, contains whitespace, is relative, or uses a non-http(s) scheme
 - **THEN** validation fails at load naming the offending `auth.entra.*` URL field
+
+#### Scenario: Entra debug flag is optional
+- **WHEN** `auth.entra.debug` is omitted
+- **THEN** Entra debug logging remains disabled
+- **AND** the sample config does not need to include the field
 
 #### Scenario: Missing auth fields
 - **WHEN** `auth.master_account_id`, `auth.saml_provider_arn`, or a required mode role entry is missing

@@ -13,6 +13,8 @@ The system SHALL implement the production Entra assertion fetch inside `internal
 
 `auth.entra.base_url`, `auth.entra.ms_login_url`, and `auth.entra.myapps_url` SHALL be configurable and SHALL default to `https://auth.entra.io` when omitted. The provider SHALL use top-level `auth.entra.app_id`; older `auth.entra.tenant_id` and `auth.entra.domain_map` entries are not part of the schema.
 
+When optional `auth.entra.debug` is `true`, the provider SHALL write Entra troubleshooting logs to stderr. These logs SHALL include only safe step, sanitized endpoint, status, and count information; they MUST NOT include passwords, cookies, SAML assertions, MFA flow tokens, session IDs, canary values, or full request URLs containing query parameters.
+
 `OPSX_SAML_ASSERTION` and `OPSX_SAML_ASSERTION_FILE` SHALL remain accepted escape hatches; when either supplies a non-empty assertion, the provider SHALL return it without prompting or making Entra HTTP calls.
 
 #### Scenario: Real Entra flow extracts assertion
@@ -24,6 +26,11 @@ The system SHALL implement the production Entra assertion fetch inside `internal
 #### Scenario: Configured Entra endpoints are used
 - **WHEN** `auth.entra.base_url`, `auth.entra.ms_login_url`, or `auth.entra.myapps_url` are set
 - **THEN** `EntraSAMLProvider` uses those URLs instead of the default `https://auth.entra.io`
+
+#### Scenario: Debug logging is safe
+- **WHEN** `auth.entra.debug` is enabled and the Entra flow runs
+- **THEN** stderr contains step-level troubleshooting logs for bootstrap, federation, ADFS relay, Microsoft relay, MFA polling, and SAML extraction
+- **AND** no password, SAML assertion, MFA token, session ID, canary value, cookie, or query-string-bearing URL is logged
 
 #### Scenario: Escape hatch bypasses Entra HTTP flow
 - **WHEN** `OPSX_SAML_ASSERTION` or a non-empty `OPSX_SAML_ASSERTION_FILE` is set

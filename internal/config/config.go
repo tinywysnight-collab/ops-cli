@@ -55,6 +55,7 @@ type Cluster struct {
 type Entra struct {
 	AppID      string `yaml:"app_id"`
 	Username   string `yaml:"username"`
+	Debug      bool   `yaml:"debug"`
 	BaseURL    string `yaml:"base_url"`
 	MSLoginURL string `yaml:"ms_login_url"`
 	MyAppsURL  string `yaml:"myapps_url"`

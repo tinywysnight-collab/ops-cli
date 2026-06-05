@@ -28,7 +28,8 @@ func TestFetchAssertionRunsEntraADFSMFAFlow(t *testing.T) {
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/applications/redirecttofederatedapplication.aspx":
-			require.Equal(t, "app-123", r.URL.Query().Get("appliationId"))
+			require.Equal(t, "app-123", r.URL.Query().Get("applicationId"))
+			require.Empty(t, r.URL.Query().Get("appliationId"))
 			writeConfig(t, w, map[string]any{
 				"urlGetCredentialType": srv.URL + "/credtype",
 				"correlationId":        "corr",
@@ -51,7 +52,7 @@ func TestFetchAssertionRunsEntraADFSMFAFlow(t *testing.T) {
 			})
 		case "/adfs":
 			require.NoError(t, r.ParseForm())
-			require.Equal(t, "operator@example.com", r.Form.Get("Username"))
+			require.Equal(t, "operator@example.com", r.Form.Get("UserName"))
 			adfsPassword = r.Form.Get("Password")
 			_, err := w.Write([]byte(`<input name="wresult" Value="relay-one" />`))
 			require.NoError(t, err)
@@ -116,6 +117,7 @@ func TestFetchAssertionRunsEntraADFSMFAFlow(t *testing.T) {
 		Entra: config.Entra{
 			Username:   "operator@example.com",
 			AppID:      "app-123",
+			Debug:      true,
 			BaseURL:    srv.URL + "/",
 			MSLoginURL: srv.URL + "/mslogin",
 			MyAppsURL:  srv.URL + "/myapps",
@@ -134,7 +136,23 @@ func TestFetchAssertionRunsEntraADFSMFAFlow(t *testing.T) {
 	require.True(t, sawBeginAuth, "BeginAuth must be called")
 	require.True(t, sawEndAuth, "EndAuth must be called")
 	require.True(t, sawPostMFA, "MFA post must be called")
-	require.Contains(t, stderr.String(), "42")
+	logs := stderr.String()
+	require.Contains(t, logs, "42")
+	require.Contains(t, logs, "opsx entra debug: starting assertion fetch role=admin")
+	require.Contains(t, logs, "opsx entra debug: bootstrap request")
+	require.Contains(t, logs, "opsx entra debug: federation redirect resolved")
+	require.Contains(t, logs, "opsx entra debug: adfs form submitted hidden_fields=1")
+	require.Contains(t, logs, "opsx entra debug: microsoft relay completed")
+	require.Contains(t, logs, "opsx entra debug: mfa required")
+	require.Contains(t, logs, "opsx entra debug: mfa approved")
+	require.Contains(t, logs, "opsx entra debug: saml assertion extracted")
+	require.NotContains(t, logs, "s3cret")
+	require.NotContains(t, logs, "ASSERTION-FROM-MFA")
+	require.NotContains(t, logs, "bootstrap-canary")
+	require.NotContains(t, logs, "ctx-after-begin")
+	require.NotContains(t, logs, "flow-after-begin")
+	require.NotContains(t, logs, "session-after-begin")
+	require.NotContains(t, logs, "app-123")
 }
 
 func TestNewEntraSAMLProviderUsesConfiguredURLs(t *testing.T) {
