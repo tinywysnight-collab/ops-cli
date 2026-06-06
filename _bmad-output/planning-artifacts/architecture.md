@@ -253,6 +253,20 @@ accounts never collide; same account+mode legitimately shares one profile. aws/k
 read these profiles natively (zero adaptation). Rejected option b (per-terminal credentials
 files) as over-engineered for v1.
 
+**D2a — Unconditional default-profile overwrite.** D2's AWS_PROFILE injection relies on a shell
+function / `eval` mutating the parent shell. Some target environments forbid that — most
+concretely Windows PowerShell under a restrictive ExecutionPolicy (where `$PROFILE` and `.ps1`
+never load) and Command Prompt. So `opsx use` also writes the assumed citizen credentials into
+the shared `[default]` profile, letting `aws`/`kubectl` resolve the active account via the AWS
+default-profile fallback — no env var, no function, no `eval`. opsx is a local single-user tool,
+so `[default]` is treated as opsx-managed and overwritten unconditionally (no flag, no config
+toggle, no ownership marker) — deliberately simpler than an opt-in escape hatch. `[default]` is
+one shared file section, so it always reflects the latest `opsx use` and provides no isolation
+of its own; the `[<alias>.<mode>]` profiles plus AWS_PROFILE injection remain the isolation path
+for shells that support it, and this write is purely additive. `opsx logout` also clears
+`[default]`. `opsx kube` has the analogous parent-env problem for `KUBECONFIG`; its default-path
+equivalent (writing `~/.kube/config`) is tracked separately rather than bundled here.
+
 **D3 — Concurrency lock + durable atomic replacement (G2).** Every read-modify-write of
 `~/.aws/credentials` (and state.json) is guarded by a `gofrs/flock` advisory exclusive lock,
 so concurrent `opsx use` from multiple terminals serializes. The lock is not crash safety by

@@ -11,8 +11,8 @@ import (
 func newInitCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init <shell>",
-		Short: "Print one-time shell integration (zsh or powershell)",
-		Long:  "Print the one-time shell function to add to your shell profile (e.g. `opsx init zsh >> ~/.zshrc` or `opsx init powershell >> $PROFILE`). After that, `opsx use`/`opsx kube`/`opsx mode` transparently update the current terminal.",
+		Short: "Print one-time shell integration (zsh, bash, powershell, or cmd)",
+		Long:  "Print the one-time shell function or wrapper to add to your shell profile/path (e.g. `opsx init zsh >> ~/.zshrc`, `opsx init bash >> ~/.bashrc`, `opsx init powershell >> $PROFILE`, or `opsx init cmd > opsx.cmd`). After that, `opsx use`/`opsx kube`/`opsx mode` transparently update the current terminal.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			script, err := shell.InitScript(args[0])

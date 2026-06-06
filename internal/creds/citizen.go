@@ -12,6 +12,15 @@ import (
 	"github.com/tinywysnight-collab/ops-cli/internal/state"
 )
 
+// DefaultProfile is the shared AWS default profile. `opsx use` overwrites it
+// with the active citizen credentials so `aws`/`kubectl` work with no
+// AWS_PROFILE and no shell integration — the single-user escape hatch for
+// shells where opsx cannot inject environment variables (Windows PowerShell
+// under a restrictive ExecutionPolicy, Command Prompt). Because it is a single
+// shared section it always reflects the latest `opsx use` and provides no
+// per-terminal isolation of its own.
+const DefaultProfile = "default"
+
 // Assumer performs an STS AssumeRole using the given master credentials as the
 // source identity, in the given AWS region, and returns the resulting citizen
 // credentials and expiry. It is a seam so the AWS call is injectable in tests.
@@ -65,6 +74,16 @@ func (s *CitizenService) Use(ctx context.Context, alias, mode string) (string, e
 	if reusable, err := s.citizenReusable(profile); err != nil {
 		return "", err
 	} else if reusable {
+		// Still refresh [default] so it reflects this (the latest) `opsx use`.
+		cached, ok, err := s.Creds.Read(profile)
+		if err != nil {
+			return "", err
+		}
+		if ok {
+			if err := s.Creds.Write(ctx, DefaultProfile, cached); err != nil {
+				return "", err
+			}
+		}
 		return profile, nil
 	}
 
@@ -97,6 +116,10 @@ func (s *CitizenService) Use(ctx context.Context, alias, mode string) (string, e
 		Mode:      mode,
 		UpdatedAt: s.now(),
 	}); err != nil {
+		return "", err
+	}
+	// Mirror the freshly-assumed credentials into the shared [default] profile.
+	if err := s.Creds.Write(ctx, DefaultProfile, citizen); err != nil {
 		return "", err
 	}
 	return profile, nil

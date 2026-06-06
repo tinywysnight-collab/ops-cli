@@ -6,7 +6,7 @@ import "fmt"
 type ErrUnsupportedShell struct{ Shell string }
 
 func (e ErrUnsupportedShell) Error() string {
-	return fmt.Sprintf("unsupported shell %q: supported shells are zsh and powershell", e.Shell)
+	return fmt.Sprintf("unsupported shell %q: supported shells are zsh, bash, powershell, and cmd", e.Shell)
 }
 
 // InitScript returns the one-time shell-integration snippet for a shell.
@@ -14,8 +14,12 @@ func InitScript(shell string) (string, error) {
 	switch shell {
 	case "zsh":
 		return zshFunction, nil
+	case "bash":
+		return bashFunction, nil
 	case "powershell", "pwsh":
 		return powerShellFunction, nil
+	case "cmd", "cmd.exe", "command-prompt":
+		return cmdWrapper, nil
 	default:
 		return "", ErrUnsupportedShell{Shell: shell}
 	}
@@ -64,6 +68,52 @@ const zshFunction = `opsx() {
           ""|export\ *) ;;
           *)
             print -r -- "opsx: refusing to eval unexpected shell-switch output: $_opsx_line" >&2
+            return 1
+            ;;
+        esac
+      done <<< "$_opsx_output"
+      eval "$_opsx_output"
+      ;;
+    *) command opsx "$@" ;;
+  esac
+}`
+
+// bashFunction is the Git Bash / Bash variant of the POSIX wrapper. It keeps the
+// same dispatch and export-only eval contract as the zsh function, but uses
+// portable Bash built-ins for diagnostics.
+const bashFunction = `opsx() {
+  local _opsx_arg
+  local _opsx_output
+  local _opsx_line
+  local _opsx_skip_next=0
+  local _opsx_subcmd=""
+
+  for _opsx_arg in "$@"; do
+    if (( _opsx_skip_next )); then
+      _opsx_skip_next=0
+      continue
+    fi
+    case "$_opsx_arg" in
+      --mode) _opsx_skip_next=1 ;;
+      --mode=*|--opr) ;;
+      --*) ;;
+      *) _opsx_subcmd="$_opsx_arg"; break ;;
+    esac
+  done
+
+  case "$_opsx_subcmd" in
+    use|kube|mode)
+      for _opsx_arg in "$@"; do
+        case "$_opsx_arg" in
+          -h|--help) command opsx "$@"; return $? ;;
+        esac
+      done
+      _opsx_output="$(command opsx shell-switch "$@")" || return $?
+      while IFS= read -r _opsx_line; do
+        case "$_opsx_line" in
+          ""|export\ *) ;;
+          *)
+            printf '%s\n' "opsx: refusing to eval unexpected shell-switch output: $_opsx_line" >&2
             return 1
             ;;
         esac
@@ -138,3 +188,71 @@ const powerShellFunction = `function opsx {
     }
   }
 }`
+
+// cmdWrapper is a batch-file wrapper for Windows Command Prompt. A .exe cannot
+// mutate its parent cmd.exe environment, but a .cmd file runs in that command
+// interpreter and its SET commands persist after it returns. Install this as an
+// opsx.cmd that appears on PATH before opsx.exe; the wrapper delegates
+// non-switching commands directly to opsx.exe and applies shell-switch output
+// only for use/kube/mode.
+const cmdWrapper = `@echo off
+if not defined OPSX_EXE set "OPSX_EXE=opsx.exe"
+set "_opsx_subcmd="
+set "_opsx_skip_next="
+set "_opsx_args=%*"
+
+:opsx_parse
+if "%~1"=="" goto opsx_dispatch
+if defined _opsx_skip_next (
+  set "_opsx_skip_next="
+  shift
+  goto opsx_parse
+)
+set "_opsx_arg=%~1"
+if "%_opsx_arg%"=="--mode" (
+  set "_opsx_skip_next=1"
+  shift
+  goto opsx_parse
+)
+if "%_opsx_arg:~0,7%"=="--mode=" (
+  shift
+  goto opsx_parse
+)
+if "%_opsx_arg%"=="--opr" (
+  shift
+  goto opsx_parse
+)
+if "%_opsx_arg:~0,2%"=="--" (
+  shift
+  goto opsx_parse
+)
+set "_opsx_subcmd=%_opsx_arg%"
+
+:opsx_dispatch
+for %%S in (use kube mode) do if "%_opsx_subcmd%"=="%%S" goto opsx_switch
+"%OPSX_EXE%" %_opsx_args%
+exit /b %ERRORLEVEL%
+
+:opsx_switch
+for %%A in (%_opsx_args%) do (
+  if "%%~A"=="-h" (
+    "%OPSX_EXE%" %_opsx_args%
+    exit /b %ERRORLEVEL%
+  )
+  if "%%~A"=="--help" (
+    "%OPSX_EXE%" %_opsx_args%
+    exit /b %ERRORLEVEL%
+  )
+)
+set "_opsx_tmp=%TEMP%\opsx-shell-switch-%RANDOM%-%RANDOM%.tmp"
+"%OPSX_EXE%" shell-switch --shell cmd %_opsx_args% > "%_opsx_tmp%"
+set "_opsx_status=%ERRORLEVEL%"
+if not "%_opsx_status%"=="0" (
+  del "%_opsx_tmp%" >nul 2>nul
+  exit /b %_opsx_status%
+)
+for /f "usebackq delims=" %%L in ("%_opsx_tmp%") do %%L
+set "_opsx_status=%ERRORLEVEL%"
+del "%_opsx_tmp%" >nul 2>nul
+exit /b %_opsx_status%
+`

@@ -23,7 +23,7 @@ func TestLogoutPlanDefaultMode(t *testing.T) {
 	}
 	got, err := logoutProfiles("admin", false, entries)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []string{"master_admin", "dev.admin"}, got)
+	require.ElementsMatch(t, []string{"master_admin", "dev.admin", "default"}, got)
 }
 
 func TestLogoutPlanAll(t *testing.T) {
@@ -35,7 +35,28 @@ func TestLogoutPlanAll(t *testing.T) {
 	}
 	got, err := logoutProfiles("admin", true, entries)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []string{"master_admin", "master_awsopr", "dev.admin", "prod.opr"}, got)
+	require.ElementsMatch(t, []string{"master_admin", "master_awsopr", "dev.admin", "prod.opr", "default"}, got)
+}
+
+func TestRunLogoutRemovesDefaultProfile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("OPSX_CONFIG_DIR", filepath.Join(dir, "opsx"))
+	t.Setenv("OPSX_CREDENTIALS_FILE", filepath.Join(dir, "aws", "credentials"))
+	cs, err := credStore()
+	require.NoError(t, err)
+	ss, err := stateStore()
+	require.NoError(t, err)
+	now := time.Now()
+	require.NoError(t, cs.Write(context.Background(), "master_admin", creds.Credentials{AccessKeyID: "M", SecretAccessKey: "S", SessionToken: "T"}))
+	require.NoError(t, cs.Write(context.Background(), "default", creds.Credentials{AccessKeyID: "D", SecretAccessKey: "S", SessionToken: "T"}))
+	require.NoError(t, ss.Put(context.Background(), "master_admin", state.Entry{Account: "master", Mode: "admin", UpdatedAt: now}))
+
+	_, err = runLogout(context.Background(), "admin", false)
+	require.NoError(t, err)
+
+	_, ok, err := cs.Read("default")
+	require.NoError(t, err)
+	require.False(t, ok, "[default] must be cleared by logout")
 }
 
 func TestRunLogoutPurgesCredentialsAndState(t *testing.T) {

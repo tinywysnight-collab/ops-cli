@@ -27,6 +27,13 @@ opsx init zsh >> ~/.zshrc      # adds: opsx() { eval "$(command opsx shell-switc
 exec zsh                       # reload
 ```
 
+Git Bash / Bash:
+
+```bash
+opsx init bash >> ~/.bashrc
+exec bash
+```
+
 PowerShell:
 
 ```powershell
@@ -34,9 +41,22 @@ opsx init powershell >> $PROFILE
 . $PROFILE
 ```
 
+Command Prompt (`cmd.exe`):
+
+```bat
+mkdir %USERPROFILE%\bin
+opsx init cmd > %USERPROFILE%\bin\opsx.cmd
+```
+
+Put `%USERPROFILE%\bin` before the directory containing `opsx.exe` on `PATH`, then open a new
+Command Prompt. The wrapper must be found before `opsx.exe`, because `cmd.exe` normally prefers
+`.exe` over `.cmd` within the same directory. If the real binary is not named `opsx.exe` (for
+example `opsx-windows-amd64.exe`), either rename it or set `OPSX_EXE` to its full path before using
+the wrapper.
+
 After this, `opsx use` / `opsx kube` / `opsx mode` transparently update your current terminal.
-`opsx init` supports zsh and PowerShell. bash and fish generators are a non-goal for v1; bash/fish
-operators get no auto-switch and must use the manual fallback below for every switching command.
+`opsx init` supports zsh, Bash/Git Bash, PowerShell, and Command Prompt. fish and other shells must
+use the manual fallback below for every switching command.
 (`opsx use`, `opsx kube`, and `opsx mode` are the switching commands; all other commands run normally.)
 
 Without the function (other shells, restricted machines), use the manual fallback:
@@ -49,6 +69,12 @@ PowerShell manual fallback:
 
 ```powershell
 opsx shell-switch --shell powershell use dev | ForEach-Object { Invoke-Expression $_ }
+```
+
+Command Prompt manual fallback:
+
+```bat
+for /f "delims=" %L in ('opsx shell-switch --shell cmd use dev') do %L
 ```
 
 ## Configure
@@ -117,7 +143,7 @@ opsx login                 # optional pre-obtained SAMLResponse escape hatch
 opsx login --opr          # second master role (master_AWSOpr); both coexist
 opsx mode opr             # set this terminal's default mode (or use --opr per command)
 
-opsx use dev              # assume citizen role → AWS_PROFILE=dev.admin  (no MFA, < 2s)
+opsx use dev              # assume citizen role → AWS_PROFILE=dev.admin + overwrite [default]  (no MFA, < 2s)
 opsx kube dev-syd         # update kubeconfig → per-terminal KUBECONFIG; kubectl/helm follow
 opsx logout               # purge this mode's opsx-managed cached credentials/state
 
@@ -134,6 +160,25 @@ opsx login [--opr]`).
 > hatch for CI, off-network testing, or emergency bypass. Because the HTTP flow is company-specific,
 > keep it live-verified on the proxy-gated company machine against the legacy Python baseline before
 > broad rollout.
+
+## Default profile (works in any shell, no setup)
+
+`opsx use` also overwrites the shared `[default]` profile in `~/.aws/credentials` with the
+freshly-assumed citizen credentials (in addition to `[<alias>.<mode>]`). So even where opsx
+cannot inject `AWS_PROFILE` into your shell — Windows PowerShell under a restrictive
+ExecutionPolicy (where `$PROFILE` and `.ps1` won't run), Command Prompt, or any machine without
+the shell function installed — plain `aws` / `kubectl` still target the account you last switched
+to, via AWS's default-profile fallback. No env var, no `eval`, no `init` required.
+
+- `[default]` always reflects your **most recent** `opsx use` (it is a single shared file
+  section), so it does **not** provide per-terminal isolation on its own. Terminals that inject
+  `AWS_PROFILE` via the installed shell function stay isolated through their `[<alias>.<mode>]`
+  profiles — that path is unchanged.
+- opsx treats `[default]` as opsx-managed and overwrites it unconditionally. If you keep your own
+  long-term credentials in `[default]`, move them to a named profile first.
+- `opsx logout` clears `[default]` too.
+- `opsx kube` does not yet write a default `~/.kube/config`; for `kubectl` in a shell with no
+  `KUBECONFIG`, that default-path support is a planned follow-up.
 
 ## How isolation works
 
@@ -170,13 +215,11 @@ These are acknowledged, deliberate scope decisions for v1; refinements are plann
 - **`opsx kube` requires both `aws` and `kubectl`.** The prerequisite check fails if either is
   missing, even for operators who only use `helm` or a GUI. Making the `kubectl` check lazy
   (only `aws` is strictly needed for the switch) is planned for v1.1.
-- **Shell auto-switch wrappers are zsh and PowerShell only.** bash/fish auto-switch wrappers are
-  a non-goal for v1; use the manual `eval "$(opsx shell-switch …)"` fallback for POSIX shells.
 - **`opsx mode` only takes effect through the shell function or shell-switch fallback.** Run
   outside the installed `opsx` function (i.e. the bare binary), `opsx mode opr` merely prints an
   environment assignment line and changes nothing in the current shell, because a child process
-  cannot mutate its parent's environment. Use the installed function, `eval "$(opsx shell-switch
-  mode opr)"`, or the PowerShell `--shell powershell` fallback above.
+  cannot mutate its parent's environment. Use the installed zsh/Bash/PowerShell function,
+  Command Prompt wrapper, `eval "$(opsx shell-switch mode opr)"`, or the shell-specific fallback above.
 - **Real Entra flow is environment-dependent.** The HTTP/MFA flow is implemented, but its exact
   request chain depends on the company's Entra/ADFS pages and proxy-gated network. The env/file
   SAML assertion escape hatch remains supported for off-network testing and recovery.

@@ -105,7 +105,7 @@ auth:
 - `auth.region` is the master STS region and default citizen STS region; `accounts.<alias>.region` optionally overrides citizen STS for that account. These are distinct from each cluster's EKS region.
 - `auth.entra.base_url`, `auth.entra.ms_login_url`, and `auth.entra.myapps_url` are optional endpoint overrides and default to `https://auth.entra.io`; they are intentionally left out of the sample config unless an environment needs non-default Entra endpoints. The login flow uses top-level `auth.entra.app_id`; older `tenant_id` / `domain_map` config entries are no longer part of the schema.
 - `auth.entra.debug` is an optional troubleshooting flag, defaulting to `false`. When enabled, Entra logs go to stderr and include only sanitized step/endpoint/status/count details, never passwords, cookies, SAML assertions, MFA tokens, session IDs, or canary values.
-- Citizen profiles are named `[<alias>.<mode>]` (e.g. `[dev.admin]`, `[prod.opr]`) so the same account can be active in both modes without overwriting.
+- Citizen profiles are named `[<alias>.<mode>]` (e.g. `[dev.admin]`, `[prod.opr]`) so the same account can be active in both modes without overwriting. `opsx use` additionally overwrites the shared `[default]` profile with the same credentials (see M13).
 
 ---
 
@@ -125,6 +125,7 @@ auth:
 | M10 | **`opsx ls`** | List configured account and cluster aliases. |
 | M11 | **Clear expiry errors** | When master/citizen creds are expired, fail with a clear message prompting `opsx login`. |
 | M12 | **`opsx logout [--all]`** | Purge opsx-managed cached credentials/state for the selected mode or all modes without hand-editing `~/.aws/credentials`; preserve unrelated profiles/comments. |
+| M13 | **Default-profile overwrite** | `opsx use` always overwrites the shared `[default]` profile with the freshly-assumed citizen credentials (in addition to `[<alias>.<mode>]`), so `aws`/`kubectl` work with no `AWS_PROFILE` and no shell integration — covering shells where opsx cannot inject env vars (PowerShell under a restrictive ExecutionPolicy, Command Prompt). opsx is a local single-user tool, so `[default]` is treated as opsx-managed and overwritten unconditionally (no flag/config). `[default]` reflects the latest `opsx use`; AWS_PROFILE-injecting shells stay isolated via their `[<alias>.<mode>]` profiles. `opsx logout` also clears `[default]`. `opsx kube` default-path support (`~/.kube/config`) is a deferred follow-up. |
 
 ### Note on M8 — why shell integration is required
 

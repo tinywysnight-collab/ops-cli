@@ -18,6 +18,7 @@ type Dialect string
 const (
 	DialectPOSIX      Dialect = "posix"
 	DialectPowerShell Dialect = "powershell"
+	DialectCmd        Dialect = "cmd"
 )
 
 // Assignment is a shell-neutral environment update. Business logic should
@@ -49,14 +50,21 @@ var posixSafeValue = regexp.MustCompile(`^[A-Za-z0-9%._/@:=+~-]+$`)
 // rejected rather than escaped.
 var powerShellSafeValue = regexp.MustCompile(`^[A-Za-z0-9%._/@:=+~\\-]+$`)
 
+// cmdSafeValue allows opsx-managed tokens plus Windows path separators. Values
+// are emitted with `set "KEY=value"` quoting, so cmd metacharacters such as &,
+// |, <, >, quotes, whitespace, and command substitution are rejected outright.
+var cmdSafeValue = regexp.MustCompile(`^[A-Za-z0-9%._/@:=+~\\-]+$`)
+
 // ParseDialect resolves a user-facing dialect token. Empty defaults to POSIX to
 // preserve existing zsh/manual-eval behavior.
 func ParseDialect(name string) (Dialect, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "", "posix", "sh", "zsh":
+	case "", "posix", "sh", "bash", "zsh":
 		return DialectPOSIX, nil
 	case "powershell", "pwsh":
 		return DialectPowerShell, nil
+	case "cmd", "cmd.exe", "command-prompt":
+		return DialectCmd, nil
 	default:
 		return "", fmt.Errorf("unsupported shell dialect %q", name)
 	}
@@ -102,6 +110,11 @@ func emitAssignment(dialect Dialect, update Assignment) (string, error) {
 			return "", fmt.Errorf("refusing to emit unsafe PowerShell value for %s: %q contains shell metacharacters", update.Key, update.Value)
 		}
 		return fmt.Sprintf(`$env:%s = "%s"`, update.Key, update.Value), nil
+	case DialectCmd:
+		if !cmdSafeValue.MatchString(update.Value) {
+			return "", fmt.Errorf("refusing to emit unsafe cmd value for %s: %q contains shell metacharacters", update.Key, update.Value)
+		}
+		return fmt.Sprintf(`set "%s=%s"`, update.Key, update.Value), nil
 	default:
 		return "", fmt.Errorf("unsupported shell dialect %q", dialect)
 	}

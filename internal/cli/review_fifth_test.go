@@ -86,6 +86,16 @@ func powershellEnvValue(out, key string) string {
 	return ""
 }
 
+func cmdEnvValue(out, key string) string {
+	prefix := `set "` + key + `=`
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if v, ok := strings.CutPrefix(line, prefix); ok {
+			return strings.TrimSuffix(v, `"`)
+		}
+	}
+	return ""
+}
+
 // dottedAliasConfig binds a cluster alias containing a dot, which is config-valid
 // (aliasPattern allows '.') and exercises the kubeconfig percent-encoding.
 const dottedAliasConfig = `
@@ -262,4 +272,31 @@ func TestShellSwitchPowerShellUseKubeAndModeEmitAssignments(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "opr", powershellEnvValue(modeOut, "OPSX_MODE"))
 	require.NotContains(t, modeOut, "export ")
+}
+
+func TestShellSwitchCmdUseKubeAndModeEmitAssignments(t *testing.T) {
+	setupFakeEnv(t, integrationConfig)
+	_, _, err := runOutErr(t, "login")
+	require.NoError(t, err)
+
+	useOut, _, err := runOutErr(t, "shell-switch", "--shell", "cmd", "use", "dev")
+	require.NoError(t, err)
+	require.Equal(t, "dev.admin", cmdEnvValue(useOut, "AWS_PROFILE"))
+	require.NotContains(t, useOut, "export ")
+	require.NotContains(t, useOut, "$env:")
+
+	kubeOut, errOut, err := runOutErr(t, "shell-switch", "--shell", "cmd", "kube", "dev-syd")
+	require.NoError(t, err)
+	require.Equal(t, "dev.admin", cmdEnvValue(kubeOut, "AWS_PROFILE"))
+	require.NotEmpty(t, cmdEnvValue(kubeOut, "KUBECONFIG"))
+	require.NotContains(t, kubeOut, "export ")
+	require.NotContains(t, kubeOut, "$env:")
+	require.Regexp(t, `account.*AWS_PROFILE=dev\.admin`, errOut)
+	require.Regexp(t, `cluster.*dev-syd`, errOut)
+
+	modeOut, _, err := runOutErr(t, "shell-switch", "--shell", "cmd", "mode", "opr")
+	require.NoError(t, err)
+	require.Equal(t, "opr", cmdEnvValue(modeOut, "OPSX_MODE"))
+	require.NotContains(t, modeOut, "export ")
+	require.NotContains(t, modeOut, "$env:")
 }

@@ -89,6 +89,15 @@ func TestEmitAssignmentsByDialect(t *testing.T) {
 				`$env:OPSX_MODE = "opr"`,
 			},
 		},
+		{
+			name:    "cmd",
+			dialect: shell.DialectCmd,
+			want: []string{
+				`set "AWS_PROFILE=dev.admin"`,
+				`set "KUBECONFIG=/home/u/.config/opsx/kube/admin/dev%2Esyd.yaml"`,
+				`set "OPSX_MODE=opr"`,
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -99,11 +108,56 @@ func TestEmitAssignmentsByDialect(t *testing.T) {
 	}
 }
 
+func TestParseDialectPOSIXAliases(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{name: "empty", in: ""},
+		{name: "posix", in: "posix"},
+		{name: "sh", in: "sh"},
+		{name: "bash", in: "bash"},
+		{name: "zsh", in: "zsh"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := shell.ParseDialect(tc.in)
+			require.NoError(t, err)
+			require.Equal(t, shell.DialectPOSIX, got)
+		})
+	}
+}
+
+func TestParseDialectCmdAliases(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{name: "cmd", in: "cmd"},
+		{name: "command prompt", in: "command-prompt"},
+		{name: "cmd exe", in: "cmd.exe"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := shell.ParseDialect(tc.in)
+			require.NoError(t, err)
+			require.Equal(t, shell.DialectCmd, got)
+		})
+	}
+}
+
 func TestPowerShellAssignmentRejectsUnsafeValues(t *testing.T) {
 	updates := []shell.Assignment{{Key: "AWS_PROFILE", Value: `dev"; Remove-Item -Recurse ~`}}
 	got, err := shell.EmitAssignments(shell.DialectPowerShell, updates)
 	require.Error(t, err)
 	require.Empty(t, got, "unsafe PowerShell assignments must never be emitted")
+}
+
+func TestCmdAssignmentRejectsUnsafeValues(t *testing.T) {
+	updates := []shell.Assignment{{Key: "AWS_PROFILE", Value: `dev&del C:\Users\me`}}
+	got, err := shell.EmitAssignments(shell.DialectCmd, updates)
+	require.Error(t, err)
+	require.Empty(t, got, "unsafe cmd assignments must never be emitted")
 }
 
 func TestInitScriptZshOnlyWrapsSwitchers(t *testing.T) {
@@ -153,6 +207,45 @@ printf 'status=%d\n' $?
 	require.NoError(t, err)
 	log := string(logData)
 	require.Contains(t, log, "shell-switch --mode opr use dev\n")
+	require.Contains(t, log, "shell-switch use missing\n")
+}
+
+func TestInitScriptBashAppliesSwitchInCurrentShell(t *testing.T) {
+	bash := requireBash(t)
+	dir := t.TempDir()
+	fakeOpsx := filepath.Join(dir, "opsx")
+	logPath := filepath.Join(dir, "opsx.log")
+	script := `#!/bin/sh
+printf '%s\n' "$*" >> "` + logPath + `"
+if [ "$1" = "shell-switch" ]; then
+  shift
+  case "$*" in
+    *missing*) exit 23 ;;
+    *) printf '%s\n' 'export AWS_PROFILE=dev.admin' ;;
+  esac
+fi
+`
+	require.NoError(t, os.WriteFile(fakeOpsx, []byte(script), 0o700))
+
+	initScript, err := shell.InitScript("bash")
+	require.NoError(t, err)
+
+	cmd := exec.Command(bash, "-c", initScript+`
+PATH="`+dir+`:$PATH"
+opsx use dev
+printf 'profile=%s\n' "$AWS_PROFILE"
+opsx use missing
+printf 'status=%d\n' $?
+`)
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err)
+	require.Contains(t, string(out), "profile=dev.admin")
+	require.Contains(t, string(out), "status=23")
+
+	logData, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+	log := string(logData)
+	require.Contains(t, log, "shell-switch use dev\n")
 	require.Contains(t, log, "shell-switch use missing\n")
 }
 
@@ -239,6 +332,17 @@ func TestInitScriptPowerShellEmitsWrapper(t *testing.T) {
 	require.Contains(t, got, "powershell")
 	require.Contains(t, got, "Invoke-Expression")
 	require.Contains(t, got, "$env:")
+}
+
+func TestInitScriptCmdEmitsWrapper(t *testing.T) {
+	got, err := shell.InitScript("cmd")
+	require.NoError(t, err)
+	require.Contains(t, got, "@echo off")
+	require.Contains(t, got, "shell-switch --shell cmd")
+	require.Contains(t, got, "use kube mode")
+	require.Contains(t, got, "opsx.exe")
+	require.Contains(t, got, "set \"")
+	require.Contains(t, got, "exit /b")
 }
 
 func TestInitScriptPowerShellRoutesLeadingGlobalFlagsAndPreservesFailure(t *testing.T) {
@@ -352,4 +456,13 @@ func requirePwsh(t *testing.T) string {
 		t.Skip("pwsh not installed; skipping live PowerShell wrapper test")
 	}
 	return pwsh
+}
+
+func requireBash(t *testing.T) string {
+	t.Helper()
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not installed; skipping live bash wrapper test")
+	}
+	return bash
 }

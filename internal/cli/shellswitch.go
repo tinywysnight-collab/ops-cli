@@ -18,7 +18,7 @@ func newShellSwitchCommand() *cobra.Command {
 		Use:   "shell-switch",
 		Short: "Emit environment assignment lines (internal target of the shell function)",
 	}
-	cmd.PersistentFlags().StringVar(&opts.dialect, "shell", opts.dialect, "assignment dialect: posix|powershell")
+	cmd.PersistentFlags().StringVar(&opts.dialect, "shell", opts.dialect, "assignment dialect: posix|bash|zsh|powershell|cmd")
 	cmd.AddCommand(
 		newShellSwitchUseCommand(opts),
 		newShellSwitchKubeCommand(opts),

@@ -75,6 +75,61 @@ func TestUseAssumesCitizenAndWritesProfile(t *testing.T) {
 	require.True(t, now.Add(time.Hour).Equal(entry.Expiry))
 }
 
+// TestUseAlsoWritesDefaultProfile asserts that `opsx use` mirrors the assumed
+// citizen credentials into the shared [default] profile (single-user escape
+// hatch for shells where AWS_PROFILE cannot be injected).
+func TestUseAlsoWritesDefaultProfile(t *testing.T) {
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	cs, ss := newCitizenStores(t)
+	seedMaster(t, cs, ss, now)
+	svc := &creds.CitizenService{
+		Cfg: citizenConfig(), Creds: cs, State: ss, Now: func() time.Time { return now },
+		Assume: func(context.Context, creds.Credentials, string, string, string) (creds.Credentials, time.Time, error) {
+			return creds.Credentials{AccessKeyID: "CITIZEN", SecretAccessKey: "cs", SessionToken: "ct"}, now.Add(time.Hour), nil
+		},
+	}
+
+	_, err := svc.Use(context.Background(), "dev", "admin")
+	require.NoError(t, err)
+
+	def, ok, err := cs.Read("default")
+	require.NoError(t, err)
+	require.True(t, ok, "[default] must be written on use")
+	require.Equal(t, "CITIZEN", def.AccessKeyID)
+	require.Equal(t, "ct", def.SessionToken)
+}
+
+// TestUseRewritesDefaultOnReuse asserts that even when the citizen profile is
+// reused (no fresh AssumeRole), [default] is refreshed to point at this account
+// so it always reflects the latest `opsx use`.
+func TestUseRewritesDefaultOnReuse(t *testing.T) {
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	cs, ss := newCitizenStores(t)
+	seedMaster(t, cs, ss, now)
+	assumeCalls := 0
+	svc := &creds.CitizenService{
+		Cfg: citizenConfig(), Creds: cs, State: ss, Now: func() time.Time { return now },
+		Assume: func(context.Context, creds.Credentials, string, string, string) (creds.Credentials, time.Time, error) {
+			assumeCalls++
+			return creds.Credentials{AccessKeyID: "CITIZEN", SecretAccessKey: "cs", SessionToken: "ct"}, now.Add(time.Hour), nil
+		},
+	}
+
+	_, err := svc.Use(context.Background(), "dev", "admin")
+	require.NoError(t, err)
+	// Simulate another account having claimed [default] since the first use.
+	require.NoError(t, cs.Write(context.Background(), "default", creds.Credentials{AccessKeyID: "OTHER", SecretAccessKey: "x", SessionToken: "y"}))
+
+	_, err = svc.Use(context.Background(), "dev", "admin")
+	require.NoError(t, err)
+
+	require.Equal(t, 1, assumeCalls, "second use reuses cached citizen creds")
+	def, ok, err := cs.Read("default")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "CITIZEN", def.AccessKeyID, "[default] must be refreshed even on cache reuse")
+}
+
 // TestUsePassesConfiguredRegionToAssume asserts the per-account region resolved
 // from config reaches the Assume seam (so the STS client is built with the
 // configured region rather than depending on ambient AWS_REGION).

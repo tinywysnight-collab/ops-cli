@@ -205,7 +205,7 @@ correctness item. Re-apply TDD red-green-refactor: failing test first.
 
 - [x] 13.4 **(introspection) `opsx status` is purely local and never verifies identity with AWS.** It can show "valid until X" for credentials that were revoked server-side. A lightweight `GetCallerIdentity` check (opt-in) would close the trust gap. Acceptable for v1.
 - [x] 13.5 **(cluster-switching) `opsx kube` hard-requires `kubectl` though it never runs it.** `requiredTools = {aws, kubectl}` blocks operators who only use helm/a GUI. Consider requiring only `aws` for the switch and checking `kubectl` lazily.
-- [x] 13.6 **(shell-integration, docs) Shell integration is zsh-only.** bash/fish operators get no auto-switch and must use the manual `eval "$(opsx shell-switch …)"` fallback; README must make this prominent. bash/fish generators remain a non-goal (N7) but the limitation should be explicit.
+- [x] 13.6 **(shell-integration, docs) Shell integration was zsh-only.** bash/fish operators originally got no auto-switch and had to use the manual `eval "$(opsx shell-switch …)"` fallback; README made that limitation prominent. Superseded for Bash/Git Bash by task 17.2; fish remains manual fallback.
 - [x] 13.7 **(cli-foundation, UX) Bare `opsx mode opr` (outside the shell function) only prints an `export` line and changes nothing.** Consider a stderr hint that it must be run via the opsx shell function or `eval` to take effect.
 
 ## 14. Functional completeness — fifth review 2026-05-31
@@ -255,6 +255,8 @@ integration are both real.
 ## 17. Cross-platform fsutil follow-up
 
 - [x] 17.1 **(credential-store) Platform-aware parent-directory sync.** Split `defaultSyncDir` into platform-specific implementations so macOS/Linux fsync the parent directory after atomic rename, while Windows treats the directory sync as a no-op instead of failing every atomic write; keep temp-file fsync before rename on all platforms and verify Windows/macOS/Linux builds compile.
+- [x] 17.2 **(shell-integration) Bash/Git Bash auto-switch wrapper.** Add `opsx init bash` for Bash and Windows Git Bash so `opsx use`/`opsx kube`/`opsx mode` run through guarded POSIX `shell-switch` eval and export `AWS_PROFILE`/`KUBECONFIG`/`OPSX_MODE` into the current shell. Add a failing live Bash wrapper test first, support `bash` as a POSIX dialect alias, and update README/spec/design/proposal docs.
+- [x] 17.3 **(shell-integration) Command Prompt auto-switch wrapper.** Add `opsx init cmd` and `--shell cmd` assignment output so Windows Command Prompt users can install an `opsx.cmd` PATH-priority wrapper that applies `set "AWS_PROFILE=..."`, `set "KUBECONFIG=..."`, and `set "OPSX_MODE=..."` in the current `cmd.exe`. Add failing cmd dialect/wrapper tests first and update README/spec/design/proposal docs.
 
 ## 18. Owner-added MFA implementation alignment — 2026-06-05
 
@@ -263,3 +265,22 @@ integration are both real.
 - [ ] 18.3 **(entra-auth/live) Company-machine live verification.** On the proxy-gated company machine, run `opsx login` against the real Entra/ADFS/MFA endpoints and compare the request/response assumptions against the legacy Python script. Keep the env/file assertion escape hatch available for recovery and off-network testing.
 - [x] 18.4 **(entra-auth/config) Make Entra URLs configurable and trim unused config.** Add `auth.entra.base_url`, `auth.entra.ms_login_url`, and `auth.entra.myapps_url` with defaults to `https://auth.entra.io`; use top-level `auth.entra.app_id` for the login bootstrap; remove `tenant_id` and `domain_map` from the current config schema instead of carrying an older-config fallback.
 - [x] 18.5 **(entra-auth/debug) Add safe debug logging for the live Entra flow.** Add optional `auth.entra.debug`; when enabled, log sanitized bootstrap/federation/ADFS/relay/MFA/SAML-extraction milestones to stderr without printing passwords, assertions, cookies, query strings, MFA flow tokens, session IDs, or canary values.
+
+## 19. Default-profile overwrite — 2026-06-05
+
+`opsx use` always overwrites the shared `[default]` profile with the freshly-assumed citizen
+credentials (in addition to `[<alias>.<mode>]`), so `aws`/`kubectl` work with no `AWS_PROFILE`
+and no shell integration — covering shells where opsx cannot inject env vars (Windows PowerShell
+under a restrictive ExecutionPolicy, Command Prompt). opsx is a local single-user tool, so
+`[default]` is overwritten unconditionally — no config toggle, no flag, no ownership marker (see
+account-switching "Default-profile overwrite"). Re-apply TDD red-green-refactor: failing test
+first.
+
+- [x] 19.1 **(account-switching / credential-store) Write `[default]` on every `opsx use`.** Write failing tests first, then have `CitizenService.Use` also upsert the `[default]` profile with the same assumed citizen credentials, reusing the existing preservation rules (comments / blank lines / unrelated profiles round-trip unchanged). Tests: both `[dev.<mode>]` and `[default]` written; `[default]` holds `prod` creds after `use dev` then `use prod`; unrelated content preserved. _(Done: `creds.DefaultProfile` const; `CitizenService.Use` writes `[default]` in both fresh-assume and reuse paths; `TestUseAlsoWritesDefaultProfile` + `TestUseRewritesDefaultOnReuse`.)_
+- [x] 19.2 **(credential-store) `opsx logout` clears `[default]`.** Write a failing test first, then have logout remove the `[default]` profile alongside the other purged opsx-managed profiles, still preserving unrelated content. _(Done: `logoutProfiles` adds `creds.DefaultProfile`; `TestRunLogoutRemovesDefaultProfile` + updated plan tests.)_
+- [x] 19.3 **(docs) Document default-profile overwrite.** Update README (PRD/architecture already updated): `opsx use` overwrites `[default]`, why (locked-down PowerShell / Command Prompt), that `[default]` reflects the latest `opsx use` (no per-terminal isolation on that path), and that `opsx kube` default-path support is a deferred follow-up. _(Done: new "Default profile (works in any shell, no setup)" README section.)_
+- [x] 19.4 **(verification) Gate the change.** Run `gofmt`, `golangci-lint run ./...`, `go vet ./...`, `go test -race -cover ./...`, and `make build`; confirm existing `[<alias>.<mode>]`/AWS_PROFILE behavior is unchanged and the new `[default]` path is covered. _(Done: gofmt clean, vet clean, lint 0 issues, race suite green — creds 88.8% / shell 88.9% / config 97.8% — make build OK.)_
+
+### Deferred follow-up (not in this task block)
+
+- [ ] 19.5 **(cluster-switching) `opsx kube` default-path equivalent.** `opsx kube` faces the same parent-env limitation for `KUBECONFIG`. The analogous fix is writing/merging into the default `~/.kube/config` (and overwriting `[default]` like 19.1) so a locked-down shell can use the cluster with no env var. Scope and spec separately before implementing.

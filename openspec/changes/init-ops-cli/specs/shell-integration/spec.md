@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
-### Requirement: shell-switch emits only export lines to stdout
-The system SHALL ensure `opsx shell-switch …` prints ONLY plain `export KEY=value` lines to stdout (one per line), routing all prompts, logs, and errors to stderr, so the output is safe to consume via `eval`.
+### Requirement: shell-switch emits only assignment lines to stdout
+The system SHALL ensure `opsx shell-switch …` prints ONLY shell-specific environment assignment lines to stdout (one per line), routing all prompts, logs, and errors to stderr. The default/POSIX dialect SHALL emit plain `export KEY=value` lines safe to consume via `eval`; other dialects SHALL emit only their native assignment syntax.
 
 #### Scenario: Export-only stdout for account switch
 - **WHEN** `opsx shell-switch use dev` runs
@@ -23,6 +23,34 @@ The system SHALL emit, via `opsx init zsh`, a one-time shell function suitable f
 #### Scenario: init zsh emits the wrapper function
 - **WHEN** `opsx init zsh` runs
 - **THEN** it emits a wrapper function suitable for appending to the rc file
+
+### Requirement: One-time Bash/Git Bash function generator
+The system SHALL emit, via `opsx init bash`, a one-time Bash function suitable for appending to `.bashrc` that wraps `opsx` to apply POSIX `shell-switch` output through guarded `eval`. This includes Git Bash on Windows, where the shell is Bash and a bare `opsx use` child process cannot mutate the parent shell's `AWS_PROFILE`.
+
+#### Scenario: init bash emits the wrapper function
+- **WHEN** `opsx init bash` runs
+- **THEN** it emits a Bash-compatible wrapper function suitable for appending to `.bashrc`
+- **AND** `opsx use dev` through that function exports `AWS_PROFILE` into the current Bash/Git Bash session
+
+### Requirement: Command Prompt shell integration
+The system SHALL treat Windows Command Prompt as a distinct shell dialect. The CLI SHALL provide `opsx init cmd`, emitting a batch wrapper suitable for installation as `opsx.cmd`, and `opsx shell-switch --shell cmd` SHALL emit only `cmd.exe` native assignment lines such as `set "AWS_PROFILE=dev.admin"`.
+
+Because `cmd.exe` normally resolves `.exe` before `.cmd` within the same directory, the Command Prompt wrapper SHALL be documented as a PATH-priority wrapper: `opsx.cmd` must be placed in a directory earlier on `PATH` than `opsx.exe`.
+
+#### Scenario: init cmd emits a batch wrapper
+- **WHEN** `opsx init cmd` runs
+- **THEN** it emits a `.cmd` batch wrapper that routes only `use`, `kube`, and `mode` through `shell-switch --shell cmd`
+- **AND** all other subcommands run `opsx.exe` directly
+
+#### Scenario: cmd account switch emits only cmd assignments
+- **WHEN** `opsx shell-switch --shell cmd use dev` runs
+- **THEN** stdout contains only `set "AWS_PROFILE=dev.admin"`
+- **AND** stdout does not contain POSIX `export` or PowerShell `$env:` syntax
+
+#### Scenario: cmd cluster switch emits account and kubeconfig assignments
+- **WHEN** `opsx shell-switch --shell cmd kube dev-syd` runs
+- **THEN** stdout contains only cmd `set "KEY=value"` assignments for `AWS_PROFILE` and `KUBECONFIG`
+- **AND** all prompts, confirmations, logs, and errors go to stderr
 
 ### Requirement: Wrapper only intercepts switching subcommands
 The installed shell function SHALL route ONLY the switching subcommands (`use`, `kube`, `mode`) through `opsx shell-switch … | eval`, and SHALL execute every other subcommand (`login`, `status`, `ls`, `init`, `--help`, `--version`, …) directly so they behave identically to invoking `opsx` without the wrapper. Wrapping all subcommands through `shell-switch` (which exposes only `use`/`kube`/`mode`) is a defect: it turns `login`/`status`/`ls`/`init` into "unknown command" no-ops.
