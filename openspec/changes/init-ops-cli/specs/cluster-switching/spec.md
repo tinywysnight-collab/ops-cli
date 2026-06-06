@@ -88,6 +88,31 @@ The system SHALL set a per-terminal `KUBECONFIG` pointing at the per-(cluster,mo
 - **THEN** each exports its own `KUBECONFIG` path
 - **AND** their contexts never collide across terminals
 
+### Requirement: Default kubeconfig merge
+The system SHALL, on every `opsx kube <cluster-alias>`, also merge the cluster into the default kubeconfig at `~/.kube/config` and set it as the current context, in addition to writing the per-(cluster,mode) file under `~/.config/opsx/kube/`. This is the kubeconfig parallel of the account-switching "Default-profile overwrite": it lets `kubectl` target the cluster with no `KUBECONFIG` environment variable, shell function, or `eval`, so `opsx kube` works in shells where opsx cannot inject environment variables (Windows PowerShell under a restrictive ExecutionPolicy, Command Prompt). opsx is a local single-user tool, so this merge happens unconditionally (no flag, no config toggle).
+
+The merge SHALL be performed via `aws eks update-kubeconfig` targeting `~/.kube/config` (so the AWS CLI's own merge preserves existing `clusters`/`contexts`/`users` entries), MUST carry `--profile <alias.mode>` in the generated exec block so `kubectl` authenticates with no `AWS_PROFILE`, and SHALL set a friendly context name (the cluster alias) as `current-context`.
+
+Because `~/.kube/config` has a single `current-context`, it always reflects the most recent `opsx kube` across all terminals and provides no per-terminal isolation of its own. Terminals that inject `KUBECONFIG` via the installed shell function remain isolated through their per-(cluster,mode) files — that path is unchanged and `KUBECONFIG` takes precedence over `~/.kube/config`, so the merge is purely additive. opsx does NOT remove its merged context on `opsx logout` (editing structured kubeconfig YAML is out of scope), consistent with logout already not deleting per-cluster kubeconfig files.
+
+#### Scenario: kube merges into the default kubeconfig
+- **WHEN** `opsx kube dev-syd` runs
+- **THEN** the cluster is merged into `~/.kube/config` with `--profile dev.<mode>` in its exec block and set as `current-context`
+- **AND** `kubectl` with no `KUBECONFIG` set targets `dev-syd` and authenticates as the cluster's account
+
+#### Scenario: default merge reflects the latest kube
+- **WHEN** `opsx kube dev-syd` then `opsx kube prod-syd` run in succession
+- **THEN** `~/.kube/config` current-context is `prod-syd` after the second switch
+
+#### Scenario: unrelated kube contexts are preserved
+- **WHEN** `~/.kube/config` already contains the user's own unrelated contexts and `opsx kube dev-syd` runs
+- **THEN** those unrelated contexts remain intact in `~/.kube/config`
+
+#### Scenario: function-installed shells still isolate via KUBECONFIG
+- **WHEN** a terminal with the installed shell function runs `opsx kube dev-syd`
+- **THEN** it exports `KUBECONFIG` to the per-(cluster,mode) file, which takes precedence over `~/.kube/config`
+- **AND** the default-kubeconfig merge does not change that terminal's isolated context
+
 ### Requirement: Clear prerequisite and expiry errors
 The system SHALL fail with a clear, actionable error when `aws` or `kubectl` is missing, or print the re-login message when credentials are expired.
 

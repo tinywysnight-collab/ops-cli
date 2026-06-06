@@ -289,6 +289,20 @@ separate `opsx use`; terminals export different KUBECONFIG paths → no cross-te
 collision. helm follows KUBECONFIG automatically. Rejected option b (per-session unique files)
 — needs a terminal-session-id concept, unnecessary for v1.
 
+**D4a — Default kubeconfig merge.** D4's per-terminal isolation relies on injecting `KUBECONFIG`,
+which only the shell function / `eval` can do — the same parent-env limit D2a addresses for
+`AWS_PROFILE`. So `opsx kube` also merges the cluster into the default `~/.kube/config` and sets
+its `current-context`, via a second `aws eks update-kubeconfig` targeting that path (the AWS CLI's
+own merge preserves the user's unrelated clusters/contexts/users), again with
+`--profile <alias.mode>` in the exec block and a friendly `--alias <cluster>` context name. This
+lets `kubectl` target the cluster with no `KUBECONFIG` in shells where opsx cannot inject env vars
+(locked-down PowerShell, Command Prompt). opsx is single-user, so the merge is unconditional. The
+cost mirrors D2a: `~/.kube/config` has one `current-context`, so it always reflects the latest
+`opsx kube` and provides no isolation of its own — the per-(cluster,mode) files plus `KUBECONFIG`
+remain the isolation path for function shells (and `KUBECONFIG` takes precedence), so the merge is
+purely additive. `opsx logout` does not edit `~/.kube/config` (structured-YAML surgery is out of
+scope), consistent with logout not deleting per-cluster kubeconfig files.
+
 **D4-state — Expiry/state sidecar (G4).** `~/.config/opsx/state.json`, keyed by profile name,
 stores `{expiry, account, mode, cluster, updated_at}`. `opsx status` reads it; `use`/`kube`
 compare expiry before acting and fail with a clear "run `opsx login`" message when stale (M11).
