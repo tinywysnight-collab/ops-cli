@@ -101,10 +101,17 @@ func emitAssignment(dialect Dialect, update Assignment) (string, error) {
 	}
 	switch dialect {
 	case DialectPOSIX:
-		if !posixSafeValue.MatchString(update.Value) {
-			return "", fmt.Errorf("refusing to export unsafe value for %s: %q contains shell metacharacters", update.Key, update.Value)
+		// On Windows, opsx-built paths (the kubeconfig path) use backslash
+		// separators. A backslash is an escape character in POSIX/Bash shells
+		// (Git Bash), so normalize separators to forward slashes — Bash treats
+		// them literally and Windows kubectl/aws accept them — rather than
+		// rejecting the path. opsx only ever emits paths, profile names, and the
+		// mode token as POSIX values, so no legitimate value loses meaning here.
+		value := strings.ReplaceAll(update.Value, `\`, "/")
+		if !posixSafeValue.MatchString(value) {
+			return "", fmt.Errorf("refusing to export unsafe value for %s: %q contains shell metacharacters", update.Key, value)
 		}
-		return fmt.Sprintf("export %s=%s", update.Key, update.Value), nil
+		return fmt.Sprintf("export %s=%s", update.Key, value), nil
 	case DialectPowerShell:
 		if !powerShellSafeValue.MatchString(update.Value) {
 			return "", fmt.Errorf("refusing to emit unsafe PowerShell value for %s: %q contains shell metacharacters", update.Key, update.Value)
