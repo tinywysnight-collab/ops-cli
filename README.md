@@ -6,6 +6,8 @@ clusters. Authenticate **once per master role per hour**, then switch accounts a
 seconds by short alias — with full multi-terminal isolation and concurrent `admin`/`AWSOpr`
 modes.
 
+> 📖 Full usage guide: [USAGE.md](./USAGE.md) · 完整使用手册（中文）：[USAGE.zh-CN.md](./USAGE.zh-CN.md)
+
 ## Install
 
 ```bash
@@ -144,7 +146,7 @@ opsx login --opr          # second master role (master_AWSOpr); both coexist
 opsx mode opr             # set this terminal's default mode (or use --opr per command)
 
 opsx use dev              # assume citizen role → AWS_PROFILE=dev.admin + overwrite [default]  (no MFA, < 2s)
-opsx kube dev-syd         # update kubeconfig → per-terminal KUBECONFIG; kubectl/helm follow
+opsx kube dev-syd         # update kubeconfig → per-terminal KUBECONFIG + merge into ~/.kube/config
 opsx logout               # purge this mode's opsx-managed cached credentials/state
 
 opsx ls                   # list configured account & cluster aliases
@@ -177,15 +179,31 @@ to, via AWS's default-profile fallback. No env var, no `eval`, no `init` require
 - opsx treats `[default]` as opsx-managed and overwrites it unconditionally. If you keep your own
   long-term credentials in `[default]`, move them to a named profile first.
 - `opsx logout` clears `[default]` too.
-- `opsx kube` does not yet write a default `~/.kube/config`; for `kubectl` in a shell with no
-  `KUBECONFIG`, that default-path support is a planned follow-up.
+
+The same idea applies to clusters. Every `opsx kube <alias>` also merges the cluster into the
+default kubeconfig at `~/.kube/config` (via `aws eks update-kubeconfig`, which carries
+`--profile <alias>.<mode>` in the generated exec block) and sets it as `current-context`. So
+`kubectl` targets the cluster — and authenticates as the cluster's account — with **no**
+`KUBECONFIG`, shell function, or `eval`, covering locked-down PowerShell / Command Prompt. The
+merge is unconditional (opsx is a local single-user tool; no flag, no config toggle).
+
+- `~/.kube/config` always reflects your **most recent** `opsx kube` across all terminals, so it
+  provides **no** per-terminal isolation on its own. Terminals that inject `KUBECONFIG` via the
+  installed shell function stay isolated through their per-`(cluster,mode)` files — that path is
+  unchanged, and `KUBECONFIG` takes precedence over `~/.kube/config`, so the merge is purely additive.
+- The AWS CLI's own merge preserves your unrelated `clusters` / `contexts` / `users` entries; opsx
+  passes no destructive flag and creates `~/.kube` if it does not exist.
+- `opsx logout` does **not** edit `~/.kube/config` (editing structured kubeconfig YAML is out of
+  scope), consistent with logout already not deleting per-cluster kubeconfig files.
 
 ## How isolation works
 
 - Citizen creds are written as standard `[<alias>.<mode>]` profiles in `~/.aws/credentials`;
   each terminal exports its own `AWS_PROFILE`, so accounts never collide.
 - Each cluster gets its own `~/.config/opsx/kube/<mode>/<encoded-cluster>.yaml`; each terminal exports
-  its own `KUBECONFIG`, so contexts never collide.
+  its own `KUBECONFIG`, so contexts never collide. `opsx kube` additionally merges the cluster into
+  the shared `~/.kube/config` (latest-switch-wins, no isolation there) so `kubectl` works even with
+  no `KUBECONFIG` set.
 - All writes to `~/.aws/credentials` and `~/.config/opsx/state.json` are guarded by a `gofrs/flock`
   advisory lock, so concurrent terminals can't corrupt them.
 - Reads are lock-free but see whole-file atomic snapshots. Cross-file consistency is bounded by

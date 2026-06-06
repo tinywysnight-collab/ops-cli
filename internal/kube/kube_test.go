@@ -27,7 +27,9 @@ func TestUpdateKubeconfigInvokesAWS(t *testing.T) {
 		},
 	}
 
-	err := s.UpdateKubeconfig(context.Background(), "ap-southeast-2", "dev-eks-cluster-01", kubePath, "dev.admin")
+	// Empty alias = the per-(cluster,mode) file write, which must be unchanged
+	// (no --alias, so the AWS CLI picks its default context name).
+	err := s.UpdateKubeconfig(context.Background(), "ap-southeast-2", "dev-eks-cluster-01", kubePath, "dev.admin", "")
 	require.NoError(t, err)
 
 	require.Equal(t, "aws", gotName)
@@ -38,7 +40,42 @@ func TestUpdateKubeconfigInvokesAWS(t *testing.T) {
 		"--kubeconfig", kubePath,
 		"--profile", "dev.admin",
 	}, gotArgs)
+	require.NotContains(t, gotArgs, "--alias")
 	require.Contains(t, gotEnv, "AWS_PROFILE=dev.admin")
+}
+
+// TestUpdateKubeconfigDefaultMerge covers the default-kubeconfig merge: a
+// friendly --alias <cluster> is added so the AWS CLI sets that context name as
+// current-context, while --profile keeps the exec block self-authenticating.
+func TestUpdateKubeconfigDefaultMerge(t *testing.T) {
+	var gotArgs []string
+	// Point at a not-yet-existing ~/.kube so we also prove the dir is created
+	// (a missing ~/.kube must not make the merge fail — task 20.3).
+	defaultPath := filepath.Join(t.TempDir(), "kube", "config")
+
+	s := &kube.Service{
+		LookPath: func(string) (string, error) { return "/usr/bin/x", nil },
+		Exec: func(_ context.Context, _ []string, _ string, args ...string) error {
+			gotArgs = args
+			require.DirExists(t, filepath.Dir(defaultPath), "missing ~/.kube must be created before merge")
+			return nil
+		},
+	}
+
+	err := s.UpdateKubeconfig(context.Background(), "ap-southeast-2", "dev-eks-cluster-01", defaultPath, "dev.admin", "dev-syd")
+	require.NoError(t, err)
+
+	require.Equal(t, []string{
+		"eks", "update-kubeconfig",
+		"--region", "ap-southeast-2",
+		"--name", "dev-eks-cluster-01",
+		"--kubeconfig", defaultPath,
+		"--profile", "dev.admin",
+		"--alias", "dev-syd",
+	}, gotArgs)
+	// The merge is additive: the AWS CLI merges by default, so no destructive
+	// flag may be passed (it would clobber the user's unrelated contexts).
+	require.NotContains(t, gotArgs, "--dry-run")
 }
 
 func TestUpdateKubeconfigMissingTool(t *testing.T) {
@@ -55,7 +92,7 @@ func TestUpdateKubeconfigMissingTool(t *testing.T) {
 		},
 	}
 
-	err := s.UpdateKubeconfig(context.Background(), "r", "c", filepath.Join(t.TempDir(), "k.yaml"), "dev.admin")
+	err := s.UpdateKubeconfig(context.Background(), "r", "c", filepath.Join(t.TempDir(), "k.yaml"), "dev.admin", "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "kubectl")
 }

@@ -17,6 +17,26 @@ func TestConfigDirEnvOverride(t *testing.T) {
 	require.Equal(t, "/tmp/opsx-test", dir)
 }
 
+// TestDefaultKubeConfigHonorsHome asserts the default kubeconfig location is
+// ~/.kube/config, derived from the home directory so the default-merge path has
+// a single source of truth ($HOME-driven, overridable in tests).
+func TestDefaultKubeConfigHonorsHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	got, err := paths.DefaultKubeConfig()
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(home, ".kube", "config"), got)
+}
+
+// TestDefaultKubeConfigEnvOverride lets tests redirect the default kubeconfig at
+// a temp path without touching HOME (which other libraries also read).
+func TestDefaultKubeConfigEnvOverride(t *testing.T) {
+	t.Setenv(paths.EnvDefaultKubeConfig, "/tmp/opsx-default-kube/config")
+	got, err := paths.DefaultKubeConfig()
+	require.NoError(t, err)
+	require.Equal(t, "/tmp/opsx-default-kube/config", got)
+}
+
 // TestKubeConfigPerClusterMode asserts each (cluster,mode) maps to a distinct
 // kubeconfig file, which is what keeps two terminals' contexts from colliding.
 func TestKubeConfigPerClusterMode(t *testing.T) {

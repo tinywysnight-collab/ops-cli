@@ -49,7 +49,21 @@ func switchCluster(ctx context.Context, alias, mode string) (profile, kubeconfig
 	if err != nil {
 		return "", "", err
 	}
-	if err := kubeServiceFactory().UpdateKubeconfig(ctx, cluster.Region, cluster.Name, kubeconfigPath, profile); err != nil {
+	svc := kubeServiceFactory()
+	// Per-(cluster,mode) file write: the isolated KUBECONFIG each terminal
+	// exports. No friendly alias — this path is unchanged.
+	if err := svc.UpdateKubeconfig(ctx, cluster.Region, cluster.Name, kubeconfigPath, profile, ""); err != nil {
+		return "", "", err
+	}
+	// Additive merge into the default ~/.kube/config so `kubectl` works with no
+	// KUBECONFIG set (locked-down PowerShell / Command Prompt). The friendly
+	// alias becomes current-context; the AWS CLI's own merge preserves the
+	// user's unrelated contexts. This always reflects the latest `opsx kube`.
+	defaultKubeconfig, err := paths.DefaultKubeConfig()
+	if err != nil {
+		return "", "", err
+	}
+	if err := svc.UpdateKubeconfig(ctx, cluster.Region, cluster.Name, defaultKubeconfig, profile, alias); err != nil {
 		return "", "", err
 	}
 
