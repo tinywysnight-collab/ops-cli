@@ -35,12 +35,21 @@ var requiredTools = []string{"aws", "kubectl"}
 // UpdateKubeconfig writes the cluster's kubeconfig to kubeconfigPath using the
 // given AWS profile for credentials. It verifies prerequisites first and
 // returns a clear error naming any missing tool.
-func (s *Service) UpdateKubeconfig(ctx context.Context, region, clusterName, kubeconfigPath, awsProfile string) error {
+//
+// When alias is non-empty, `--alias <alias>` is passed so the AWS CLI names the
+// generated context with that friendly alias and sets it as current-context.
+// This is used for the additive merge into the default ~/.kube/config; the
+// per-(cluster,mode) file write passes an empty alias and is unchanged. The AWS
+// CLI merges into the target file by default (no destructive flag is passed), so
+// unrelated clusters/contexts/users already present are preserved.
+func (s *Service) UpdateKubeconfig(ctx context.Context, region, clusterName, kubeconfigPath, awsProfile, alias string) error {
 	for _, tool := range requiredTools {
 		if _, err := s.LookPath(tool); err != nil {
 			return fmt.Errorf("required tool %q not found in PATH — install it to use `opsx kube`: %w", tool, err)
 		}
 	}
+	// MkdirAll handles a missing parent (e.g. a first-ever ~/.kube) so the merge
+	// never fails just because the default kube directory does not exist yet.
 	if err := os.MkdirAll(filepath.Dir(kubeconfigPath), 0o700); err != nil {
 		return fmt.Errorf("create kube dir: %w", err)
 	}
@@ -53,6 +62,9 @@ func (s *Service) UpdateKubeconfig(ctx context.Context, region, clusterName, kub
 		"--name", clusterName,
 		"--kubeconfig", kubeconfigPath,
 		"--profile", awsProfile,
+	}
+	if alias != "" {
+		args = append(args, "--alias", alias)
 	}
 	env := []string{"AWS_PROFILE=" + awsProfile}
 	if err := s.Exec(ctx, env, "aws", args...); err != nil {

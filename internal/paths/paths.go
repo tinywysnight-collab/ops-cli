@@ -16,8 +16,9 @@ import (
 
 // Environment overrides (primarily for tests and unusual setups).
 const (
-	EnvConfigDir       = "OPSX_CONFIG_DIR"       // overrides ~/.config/opsx
-	EnvCredentialsFile = "OPSX_CREDENTIALS_FILE" // overrides ~/.aws/credentials
+	EnvConfigDir         = "OPSX_CONFIG_DIR"         // overrides ~/.config/opsx
+	EnvCredentialsFile   = "OPSX_CREDENTIALS_FILE"   // overrides ~/.aws/credentials
+	EnvDefaultKubeConfig = "OPSX_DEFAULT_KUBECONFIG" // overrides ~/.kube/config
 )
 
 // ConfigDir returns the opsx configuration directory (default ~/.config/opsx).
@@ -140,6 +141,21 @@ func decodeKubeAlias(s string) string {
 		"%25", "%",
 	)
 	return replacer.Replace(s)
+}
+
+// DefaultKubeConfig returns the default kubeconfig path (~/.kube/config) that
+// `opsx kube` also merges into so `kubectl` works with no KUBECONFIG set. It is
+// derived from the home directory ($HOME-driven, honored by os.UserHomeDir) and
+// can be overridden via EnvDefaultKubeConfig for tests and unusual setups.
+func DefaultKubeConfig() (string, error) {
+	if v := os.Getenv(EnvDefaultKubeConfig); v != "" {
+		return v, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory: %w", err)
+	}
+	return filepath.Join(home, ".kube", "config"), nil
 }
 
 // CredentialsFile returns the AWS shared credentials file (default ~/.aws/credentials).
