@@ -45,7 +45,7 @@ func newShellSwitchUseCommand(opts *shellSwitchOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			profile, err := switchAccount(cmd.Context(), args[0], mode)
+			profile, region, err := switchAccount(cmd.Context(), args[0], mode)
 			if err != nil {
 				return err
 			}
@@ -53,7 +53,7 @@ func newShellSwitchUseCommand(opts *shellSwitchOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := printAssignments(cmd, dialect, []shell.Assignment{{Key: "AWS_PROFILE", Value: profile}}); err != nil {
+			if err := printAssignments(cmd, dialect, profileRegionAssignments(profile, region)); err != nil {
 				return err
 			}
 			return nil
@@ -71,7 +71,7 @@ func newShellSwitchKubeCommand(opts *shellSwitchOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			profile, kubeconfig, err := switchCluster(cmd.Context(), args[0], mode)
+			profile, kubeconfig, region, err := switchCluster(cmd.Context(), args[0], mode)
 			if err != nil {
 				return err
 			}
@@ -82,10 +82,8 @@ func newShellSwitchKubeCommand(opts *shellSwitchOptions) *cobra.Command {
 			// Emit BOTH the account profile and the kubeconfig so a bare
 			// `opsx kube` (no prior `opsx use`) leaves AWS_PROFILE set for plain
 			// `aws` commands and `opsx status`.
-			if err := printAssignments(cmd, dialect, []shell.Assignment{
-				{Key: "AWS_PROFILE", Value: profile},
-				{Key: "KUBECONFIG", Value: kubeconfig},
-			}); err != nil {
+			assignments := append(profileRegionAssignments(profile, region), shell.Assignment{Key: "KUBECONFIG", Value: kubeconfig})
+			if err := printAssignments(cmd, dialect, assignments); err != nil {
 				return err
 			}
 			// Human confirmation goes to stderr so stdout stays export-only for
@@ -112,6 +110,14 @@ func newShellSwitchModeCommand(opts *shellSwitchOptions) *cobra.Command {
 			}
 			return printAssignments(cmd, dialect, []shell.Assignment{{Key: EnvMode, Value: mode}})
 		},
+	}
+}
+
+func profileRegionAssignments(profile, region string) []shell.Assignment {
+	return []shell.Assignment{
+		{Key: "AWS_PROFILE", Value: profile},
+		{Key: "AWS_REGION", Value: region},
+		{Key: "AWS_DEFAULT_REGION", Value: region},
 	}
 }
 

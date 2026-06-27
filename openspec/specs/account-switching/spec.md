@@ -13,10 +13,17 @@ The account alias MUST be validated against the current loaded config before any
 
 The citizen `AssumeRole` STS client MUST be built with the region resolved per the config "Configuration-driven STS region" rule (`accounts.<alias>.region` → `auth.region` → environment), so `opsx use` does not depend on an ambient `AWS_REGION`.
 
+When `opsx use` runs through shell integration (`shell-switch` or an installed wrapper), the terminal session SHALL also receive `AWS_REGION` and `AWS_DEFAULT_REGION` set to the account's resolved region. This lets subsequent `aws` CLI commands in that terminal use the configured session region without passing `--region`.
+
 #### Scenario: Successful account switch
 - **WHEN** `opsx use dev` runs with valid cached master creds for the current mode
 - **THEN** the citizen role is assumed using the account's resolved region, the `[dev.<mode>]` profile is written, and state is updated
 - **AND** it completes in under 2 seconds with no MFA
+
+#### Scenario: Account switch exports session region
+- **WHEN** `opsx use dev` runs through shell integration
+- **THEN** the terminal has `AWS_PROFILE=dev.<mode>` exported
+- **AND** `AWS_REGION` and `AWS_DEFAULT_REGION` are set to the account's resolved region
 
 #### Scenario: Expired master creds block the switch
 - **WHEN** `opsx use` runs with expired master creds

@@ -74,10 +74,18 @@ The schema SHALL support:
 
 Region resolution order SHALL be: for citizen STS, `accounts.<alias>.region` → `auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`; for master STS, `auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`. When no region resolves, the command MUST fail with a clear, name-bearing error (which region field to set) rather than the opaque SDK "an AWS region is required" message.
 
+The resolved citizen region SHALL also be exported as the terminal session's `AWS_REGION` and `AWS_DEFAULT_REGION` when `opsx use` runs through shell integration. When `opsx kube` runs through shell integration, the active cluster's `clusters.<alias>.region` SHALL be exported as `AWS_REGION` and `AWS_DEFAULT_REGION`, because subsequent `aws eks ...` commands in that session should default to the active cluster's region.
+
 #### Scenario: Configured region is applied to STS
 - **WHEN** `auth.region` (and optionally `accounts.<alias>.region`) is set and `opsx login` / `opsx use` runs
 - **THEN** the master and citizen STS clients are built with the resolved configured region
 - **AND** neither call depends on `AWS_REGION` being present in the environment
+
+#### Scenario: Configured region becomes the terminal AWS CLI region
+- **WHEN** `opsx use dev` runs through shell integration
+- **THEN** `AWS_REGION` and `AWS_DEFAULT_REGION` are set to the resolved citizen region for `dev`
+- **WHEN** `opsx kube dev-syd` runs through shell integration
+- **THEN** `AWS_REGION` and `AWS_DEFAULT_REGION` are set to `clusters.dev-syd.region`
 
 #### Scenario: No resolvable region fails clearly
 - **WHEN** no region is configured and no `AWS_REGION`/`AWS_DEFAULT_REGION` is set

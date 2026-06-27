@@ -57,6 +57,12 @@ func (fakeProvider) FetchAssertion(context.Context, auth.MasterRole) (string, er
 	return "ASSERTION", nil
 }
 
+type providerFunc func(context.Context, auth.MasterRole) (string, error)
+
+func (f providerFunc) FetchAssertion(ctx context.Context, role auth.MasterRole) (string, error) {
+	return f(ctx, role)
+}
+
 // run executes the root command with args and isolated env, returning stdout.
 func run(t *testing.T, args ...string) string {
 	t.Helper()
@@ -69,6 +75,37 @@ func run(t *testing.T, args ...string) string {
 	persistentOpr, persistentMode = false, ""
 	require.NoError(t, root.Execute(), "args=%v stderr=%s", args, errOut.String())
 	return out.String()
+}
+
+func TestLoginFetchesSAMLBeforeBuildingSTSClient(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "opsx")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(integrationConfig), 0o600))
+	t.Setenv("OPSX_CONFIG_DIR", cfgDir)
+	t.Setenv("OPSX_CREDENTIALS_FILE", filepath.Join(dir, "aws", "credentials"))
+
+	oldProviderFactory := samlProviderFactory
+	oldMasterFactory := masterAssumeFactory
+	t.Cleanup(func() {
+		samlProviderFactory = oldProviderFactory
+		masterAssumeFactory = oldMasterFactory
+	})
+
+	now := time.Now()
+	fetchedSAML := false
+	samlProviderFactory = func(config.Auth) auth.SAMLProvider {
+		return providerFunc(func(context.Context, auth.MasterRole) (string, error) {
+			fetchedSAML = true
+			return "ASSERTION", nil
+		})
+	}
+	masterAssumeFactory = func(context.Context, string) (auth.AssumeWithSAMLAPI, error) {
+		require.True(t, fetchedSAML, "login must ask Entra for SAML before building the AWS STS client")
+		return fakeMasterSTS{exp: now.Add(time.Hour)}, nil
+	}
+
+	run(t, "login")
 }
 
 func TestIntegrationLoginUseKubeStatus(t *testing.T) {
@@ -117,7 +154,9 @@ func TestIntegrationLoginUseKubeStatus(t *testing.T) {
 
 	// shell-switch use → export AWS_PROFILE + citizen profile written
 	useOut := run(t, "shell-switch", "use", "dev")
-	require.Equal(t, "export AWS_PROFILE=dev.admin\n", useOut)
+	require.Equal(t, "dev.admin", exportValue(useOut, "AWS_PROFILE"))
+	require.Equal(t, "us-east-1", exportValue(useOut, "AWS_REGION"))
+	require.Equal(t, "us-east-1", exportValue(useOut, "AWS_DEFAULT_REGION"))
 	data, _ = os.ReadFile(cred)
 	require.Contains(t, string(data), "[dev.admin]")
 	require.Contains(t, string(data), "CITIZENAK")
@@ -126,6 +165,8 @@ func TestIntegrationLoginUseKubeStatus(t *testing.T) {
 	// --profile reached update-kubeconfig (R2)
 	kubeOut := run(t, "shell-switch", "kube", "dev-syd")
 	require.True(t, strings.HasPrefix(kubeOut, "export AWS_PROFILE=dev.admin\n"), "kube must emit AWS_PROFILE first; got %q", kubeOut)
+	require.Contains(t, kubeOut, "\nexport AWS_REGION=ap-southeast-2\n")
+	require.Contains(t, kubeOut, "\nexport AWS_DEFAULT_REGION=ap-southeast-2\n")
 	require.Contains(t, kubeOut, "\nexport KUBECONFIG=")
 	require.Contains(t, gotKubeArgs, "--profile")
 	require.Contains(t, gotKubeArgs, "dev.admin")
@@ -177,18 +218,26 @@ func TestIntegrationBareKubeSetsProfileAndStatus(t *testing.T) {
 
 	run(t, "login")
 
-	// Bare kube (no prior use): emits both AWS_PROFILE and KUBECONFIG.
+	// Bare kube (no prior use): emits AWS_PROFILE, session region, and KUBECONFIG.
 	kubeOut := run(t, "shell-switch", "kube", "dev-syd")
-	var profile, kubeconfig string
+	var profile, region, defaultRegion, kubeconfig string
 	for _, line := range strings.Split(strings.TrimSpace(kubeOut), "\n") {
 		if v, ok := strings.CutPrefix(line, "export AWS_PROFILE="); ok {
 			profile = v
+		}
+		if v, ok := strings.CutPrefix(line, "export AWS_REGION="); ok {
+			region = v
+		}
+		if v, ok := strings.CutPrefix(line, "export AWS_DEFAULT_REGION="); ok {
+			defaultRegion = v
 		}
 		if v, ok := strings.CutPrefix(line, "export KUBECONFIG="); ok {
 			kubeconfig = v
 		}
 	}
 	require.Equal(t, "dev.admin", profile, "bare kube must export AWS_PROFILE")
+	require.Equal(t, "ap-southeast-2", region, "bare kube must export AWS_REGION")
+	require.Equal(t, "ap-southeast-2", defaultRegion, "bare kube must export AWS_DEFAULT_REGION")
 	require.NotEmpty(t, kubeconfig, "bare kube must export KUBECONFIG")
 
 	// Simulate the shell having eval'd both exports.

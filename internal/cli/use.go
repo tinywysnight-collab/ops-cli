@@ -10,23 +10,32 @@ import (
 )
 
 // switchAccount assumes the citizen role for alias in the current mode, writes
-// the [<alias>.<mode>] profile, and returns the profile name. It performs no
-// MFA — it relies entirely on cached master credentials.
-func switchAccount(ctx context.Context, alias, mode string) (string, error) {
+// the [<alias>.<mode>] profile, and returns the profile name plus the account's
+// resolved session region. It performs no MFA — it relies entirely on cached
+// master credentials.
+func switchAccount(ctx context.Context, alias, mode string) (profile, region string, err error) {
 	cfg, err := loadConfig()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	cs, err := credStore()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	ss, err := stateStore()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	svc := &creds.CitizenService{Cfg: cfg, Creds: cs, State: ss, Assume: citizenAssumer}
-	return svc.Use(ctx, alias, mode)
+	profile, err = svc.Use(ctx, alias, mode)
+	if err != nil {
+		return "", "", err
+	}
+	region, err = cfg.ResolveCitizenRegion(alias)
+	if err != nil {
+		return "", "", err
+	}
+	return profile, region, nil
 }
 
 func newUseCommand() *cobra.Command {
@@ -39,7 +48,7 @@ func newUseCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			profile, err := switchAccount(cmd.Context(), args[0], mode)
+			profile, _, err := switchAccount(cmd.Context(), args[0], mode)
 			if err != nil {
 				return err
 			}

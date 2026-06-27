@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -36,17 +37,15 @@ func newLoginCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			stsAPI, err := masterAssumeFactory(ctx, region)
-			if err != nil {
-				return err
-			}
 
 			svc := &auth.LoginService{
 				Cfg:      cfg,
 				Provider: samlProviderFactory(cfg.Auth),
-				STS:      stsAPI,
-				Creds:    cs,
-				State:    ss,
+				STSFactory: func(ctx context.Context) (auth.AssumeWithSAMLAPI, error) {
+					return masterAssumeFactory(ctx, region)
+				},
+				Creds: cs,
+				State: ss,
 			}
 			if err := svc.Login(ctx, mode); err != nil {
 				return err

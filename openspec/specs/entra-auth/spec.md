@@ -48,10 +48,17 @@ The system SHALL exchange the SAML assertion via `AssumeRoleWithSAML` and cache 
 
 The `AssumeRoleWithSAML` STS client MUST be built with the region resolved per the config "Configuration-driven STS region" rule (`auth.region` → environment), so login does not depend on an ambient `AWS_REGION`.
 
+The system SHALL fetch the SAML assertion before building the AWS STS client. This keeps the interactive Entra/password path from being delayed by AWS SDK config and credential discovery.
+
 #### Scenario: Master credentials cached with expiry
 - **WHEN** login completes with a returned SAML assertion
 - **THEN** `AssumeRoleWithSAML` caches master creds to `[master_admin]` (default) or `[master_awsopr]` (`--opr`)
 - **AND** a 1h expiry is recorded in state
+
+#### Scenario: Login asks Entra before building STS
+- **WHEN** `opsx login` starts
+- **THEN** it calls the SAML provider before constructing the AWS STS client
+- **AND** AWS SDK config loading cannot delay the password prompt
 
 #### Scenario: Both master roles coexist
 - **WHEN** both master roles are logged in

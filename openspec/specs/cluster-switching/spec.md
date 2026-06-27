@@ -22,12 +22,12 @@ The system SHALL ensure the kubeconfig produced by `opsx kube` can authenticate 
 - **THEN** the kubeconfig's `exec` user resolves credentials from the `<alias.mode>` profile
 - **AND** `kubectl` obtains a token without requiring a prior `opsx use`
 
-### Requirement: kube switches the account profile too
-The system SHALL, on `opsx kube <cluster-alias>`, switch the terminal's account profile in addition to its `KUBECONFIG`. Because config already binds each cluster to an account, `opsx kube` SHALL emit `export AWS_PROFILE=<alias.mode>` (the cluster's account profile) alongside `export KUBECONFIG=<path>`. This ensures plain `aws` commands run as the cluster's account and that `opsx status` (which keys off `AWS_PROFILE`) can show the active account, cluster, and expiry even when `opsx kube` was run without a prior `opsx use`.
+### Requirement: kube switches the account profile and session region too
+The system SHALL, on `opsx kube <cluster-alias>`, switch the terminal's account profile and session region in addition to its `KUBECONFIG`. Because config already binds each cluster to an account, `opsx kube` SHALL emit `export AWS_PROFILE=<alias.mode>` (the cluster's account profile), `export AWS_REGION=<cluster-region>`, `export AWS_DEFAULT_REGION=<cluster-region>`, and `export KUBECONFIG=<path>`. This ensures plain `aws` commands run as the cluster's account in the cluster's configured region and that `opsx status` (which keys off `AWS_PROFILE`) can show the active account, cluster, and expiry even when `opsx kube` was run without a prior `opsx use`.
 
-#### Scenario: kube alone sets both AWS_PROFILE and KUBECONFIG
+#### Scenario: kube alone sets AWS_PROFILE, region, and KUBECONFIG
 - **WHEN** `opsx kube dev-syd` runs in a fresh terminal with no prior `opsx use`
-- **THEN** the terminal has `AWS_PROFILE=dev.<mode>` and `KUBECONFIG=<dev-syd path>` exported
+- **THEN** the terminal has `AWS_PROFILE=dev.<mode>`, `AWS_REGION=<dev-syd region>`, `AWS_DEFAULT_REGION=<dev-syd region>`, and `KUBECONFIG=<dev-syd path>` exported
 - **AND** `opsx status` shows the account, cluster `dev-syd`, and expiry rather than "no active context"
 
 ### Requirement: kube confirms both switches to the operator

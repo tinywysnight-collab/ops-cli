@@ -18,42 +18,42 @@ import (
 // cluster to an account, `opsx kube` switches the account profile too — not
 // only KUBECONFIG — so plain `aws` commands and `opsx status` work after a bare
 // `opsx kube` with no prior `opsx use`.
-func switchCluster(ctx context.Context, alias, mode string) (profile, kubeconfigPath string, err error) {
+func switchCluster(ctx context.Context, alias, mode string) (profile, kubeconfigPath, region string, err error) {
 	cfg, err := loadConfig()
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	cluster, ok := cfg.Clusters[alias]
 	if !ok {
-		return "", "", fmt.Errorf("unknown cluster alias %q", alias)
+		return "", "", "", fmt.Errorf("unknown cluster alias %q", alias)
 	}
 
 	// Auto-ensure the cluster's account credentials for this mode (no MFA).
-	profile, err = switchAccount(ctx, cluster.Account, mode)
+	profile, _, err = switchAccount(ctx, cluster.Account, mode)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	// The just-ensured citizen credentials' expiry, recorded by switchAccount,
 	// is the source of truth for the cluster annotation below.
 	ss, err := stateStore()
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	entry, _, err := ss.Get(profile)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	kubeconfigPath, err = paths.KubeConfig(alias, mode)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	svc := kubeServiceFactory()
 	// Per-(cluster,mode) file write: the isolated KUBECONFIG each terminal
 	// exports. No friendly alias — this path is unchanged.
 	if err := svc.UpdateKubeconfig(ctx, cluster.Region, cluster.Name, kubeconfigPath, profile, ""); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	// Additive merge into the default ~/.kube/config so `kubectl` works with no
 	// KUBECONFIG set (locked-down PowerShell / Command Prompt). The friendly
@@ -61,18 +61,18 @@ func switchCluster(ctx context.Context, alias, mode string) (profile, kubeconfig
 	// user's unrelated contexts. This always reflects the latest `opsx kube`.
 	defaultKubeconfig, err := paths.DefaultKubeConfig()
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if err := svc.UpdateKubeconfig(ctx, cluster.Region, cluster.Name, defaultKubeconfig, profile, alias); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	// Record the active cluster on the profile's state entry so `opsx status`
 	// can display it.
 	if err := recordCluster(ctx, profile, cluster.Account, mode, alias, entry.Expiry); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return profile, kubeconfigPath, nil
+	return profile, kubeconfigPath, cluster.Region, nil
 }
 
 // recordCluster sets the cluster on the profile's state entry, preserving the
@@ -117,7 +117,7 @@ func newKubeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			profile, kubeconfigPath, err := switchCluster(cmd.Context(), args[0], mode)
+			profile, kubeconfigPath, _, err := switchCluster(cmd.Context(), args[0], mode)
 			if err != nil {
 				return err
 			}

@@ -124,6 +124,10 @@ and no `~/.aws/config` default. Region resolution order is: for `opsx use`,
 `auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`. If none resolves, the command fails with a
 clear message naming the field to set. `clusters.<alias>.region` is unchanged — it is the EKS
 region passed to `aws eks update-kubeconfig`, distinct from an account's STS/home region.
+When the shell integration is installed, `opsx use` also sets `AWS_REGION` and
+`AWS_DEFAULT_REGION` to the account's resolved region for the current terminal. `opsx kube` sets
+them to the active cluster's region, so subsequent `aws` commands in that session do not need a
+manual `--region`.
 
 Optional endpoint override fields `auth.entra.base_url`, `auth.entra.ms_login_url`, and
 `auth.entra.myapps_url` default to `https://auth.entra.io` when omitted. They are intentionally
@@ -161,7 +165,8 @@ opsx login [--opr]`).
 > credentials. `OPSX_SAML_ASSERTION` / `OPSX_SAML_ASSERTION_FILE` remain as an accepted escape
 > hatch for CI, off-network testing, or emergency bypass. Because the HTTP flow is company-specific,
 > keep it live-verified on the proxy-gated company machine against the legacy Python baseline before
-> broad rollout.
+> broad rollout. The login command asks the Entra provider for the SAML assertion before building
+> the AWS STS client, so the password prompt is not delayed by AWS SDK config/credential discovery.
 
 ## Default profile (works in any shell, no setup)
 
@@ -211,6 +216,12 @@ merge is unconditional (opsx is a local single-user tool; no flag, no config tog
   recorded expiry.
 - The advisory lock assumes a local home directory. Network filesystems such as NFS/SMB can have
   weaker or surprising lock semantics, so the multi-terminal guarantee is scoped to local storage.
+
+For different Entra users in different terminals, use separate opsx/AWS storage roots per session:
+set `OPSX_CONFIG_DIR`, `OPSX_CREDENTIALS_FILE`, and, when needed, `OPSX_DEFAULT_KUBECONFIG`
+before running `opsx login`. A shared credentials file is account/mode-isolated, not user-isolated:
+profiles such as `[master_admin]` and `[dev.admin]` are intentionally stable names and would be
+overwritten by another user using the same storage files.
 
 ## Security notes
 

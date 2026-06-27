@@ -11,12 +11,12 @@ The system SHALL ensure `opsx shell-switch …` prints ONLY shell-specific envir
 
 #### Scenario: Export-only stdout for account switch
 - **WHEN** `opsx shell-switch use dev` runs
-- **THEN** stdout contains only `export AWS_PROFILE=dev.admin`
+- **THEN** stdout contains only assignment lines for `AWS_PROFILE`, `AWS_REGION`, and `AWS_DEFAULT_REGION`
 - **AND** all prompts and logs go to stderr
 
 #### Scenario: Export-only stdout for cluster switch
 - **WHEN** `opsx shell-switch kube dev-syd` runs
-- **THEN** stdout contains only the two export lines `export AWS_PROFILE=dev.<mode>` and `export KUBECONFIG=<dev-syd kubeconfig path>` (one per line)
+- **THEN** stdout contains only assignment lines for `AWS_PROFILE`, `AWS_REGION`, `AWS_DEFAULT_REGION`, and `KUBECONFIG` (one per line)
 - **AND** no other output appears on stdout
 
 #### Scenario: Export-only stdout for mode
@@ -50,12 +50,12 @@ Because `cmd.exe` normally resolves `.exe` before `.cmd` within the same directo
 
 #### Scenario: cmd account switch emits only cmd assignments
 - **WHEN** `opsx shell-switch --shell cmd use dev` runs
-- **THEN** stdout contains only `set "AWS_PROFILE=dev.admin"`
+- **THEN** stdout contains only cmd `set "KEY=value"` assignments for `AWS_PROFILE`, `AWS_REGION`, and `AWS_DEFAULT_REGION`
 - **AND** stdout does not contain POSIX `export` or PowerShell `$env:` syntax
 
 #### Scenario: cmd cluster switch emits account and kubeconfig assignments
 - **WHEN** `opsx shell-switch --shell cmd kube dev-syd` runs
-- **THEN** stdout contains only cmd `set "KEY=value"` assignments for `AWS_PROFILE` and `KUBECONFIG`
+- **THEN** stdout contains only cmd `set "KEY=value"` assignments for `AWS_PROFILE`, `AWS_REGION`, `AWS_DEFAULT_REGION`, and `KUBECONFIG`
 - **AND** all prompts, confirmations, logs, and errors go to stderr
 
 ### Requirement: Wrapper only intercepts switching subcommands
@@ -79,7 +79,7 @@ The wrapper MUST NOT `eval` non-`export` output. A switching subcommand can emit
 
 #### Scenario: Switching subcommand is applied via eval
 - **WHEN** `opsx use dev` runs with the installed function
-- **THEN** the command is dispatched through `opsx shell-switch use dev` and its `export` line is `eval`'d into the current shell
+- **THEN** the command is dispatched through `opsx shell-switch use dev` and its assignment lines are applied to the current shell
 
 #### Scenario: Switching subcommand with leading global flags is applied via eval
 - **WHEN** `opsx --mode opr use dev` or `opsx --opr kube dev-syd` runs with the installed function
@@ -121,7 +121,7 @@ The system SHALL always emit copy-pasteable `export` lines so the same switch wo
 ### Requirement: PowerShell shell integration
 The system SHALL treat PowerShell as a distinct shell dialect, not as a POSIX shell. The CLI SHALL provide a PowerShell init generator and a PowerShell-safe shell-switch output mode for `use`, `kube`, and `mode`.
 
-The PowerShell dialect MUST emit only PowerShell-native environment assignment lines to stdout, such as `$env:AWS_PROFILE = "dev.admin"`, `$env:KUBECONFIG = "..."`, and `$env:OPSX_MODE = "opr"`. It MUST NOT emit POSIX `export` statements for PowerShell.
+The PowerShell dialect MUST emit only PowerShell-native environment assignment lines to stdout, such as `$env:AWS_PROFILE = "dev.admin"`, `$env:AWS_REGION = "ap-southeast-2"`, `$env:KUBECONFIG = "..."`, and `$env:OPSX_MODE = "opr"`. It MUST NOT emit POSIX `export` statements for PowerShell.
 
 #### Scenario: init powershell emits a wrapper
 - **WHEN** `opsx init powershell` runs
@@ -131,12 +131,12 @@ The PowerShell dialect MUST emit only PowerShell-native environment assignment l
 
 #### Scenario: PowerShell account switch emits only PowerShell assignments
 - **WHEN** `opsx shell-switch --shell powershell use dev` runs
-- **THEN** stdout contains only a PowerShell assignment for `AWS_PROFILE`
+- **THEN** stdout contains only PowerShell assignments for `AWS_PROFILE`, `AWS_REGION`, and `AWS_DEFAULT_REGION`
 - **AND** stdout does not contain a POSIX `export` statement
 
 #### Scenario: PowerShell cluster switch emits account and kubeconfig assignments
 - **WHEN** `opsx shell-switch --shell powershell kube dev-syd` runs
-- **THEN** stdout contains only PowerShell assignments for `AWS_PROFILE` and `KUBECONFIG`
+- **THEN** stdout contains only PowerShell assignments for `AWS_PROFILE`, `AWS_REGION`, `AWS_DEFAULT_REGION`, and `KUBECONFIG`
 - **AND** all prompts, confirmations, logs, and errors go to stderr
 
 #### Scenario: PowerShell mode switch emits only mode assignment

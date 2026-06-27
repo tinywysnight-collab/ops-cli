@@ -13,12 +13,13 @@ import (
 // LoginService orchestrates `opsx login`: fetch a SAML assertion through the
 // seam, assume the master role, and cache the credentials with their expiry.
 type LoginService struct {
-	Cfg      *config.Config
-	Provider SAMLProvider
-	STS      AssumeWithSAMLAPI
-	Creds    *creds.Store
-	State    *state.Store
-	Now      func() time.Time
+	Cfg        *config.Config
+	Provider   SAMLProvider
+	STS        AssumeWithSAMLAPI
+	STSFactory func(context.Context) (AssumeWithSAMLAPI, error)
+	Creds      *creds.Store
+	State      *state.Store
+	Now        func() time.Time
 }
 
 // Login authenticates for the given mode and caches master credentials. Both
@@ -48,7 +49,11 @@ func (s *LoginService) Login(ctx context.Context, mode string) error {
 		return fmt.Errorf("auth.saml_provider_arn is not set")
 	}
 
-	c, expiry, err := assumeMaster(ctx, s.STS, principal, roleARN, assertion)
+	stsAPI, err := s.sts(ctx)
+	if err != nil {
+		return err
+	}
+	c, expiry, err := assumeMaster(ctx, stsAPI, principal, roleARN, assertion)
 	if err != nil {
 		return err
 	}
@@ -66,6 +71,23 @@ func (s *LoginService) Login(ctx context.Context, mode string) error {
 		Mode:      mode,
 		UpdatedAt: s.now(),
 	})
+}
+
+func (s *LoginService) sts(ctx context.Context) (AssumeWithSAMLAPI, error) {
+	if s.STSFactory != nil {
+		stsAPI, err := s.STSFactory(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if stsAPI == nil {
+			return nil, fmt.Errorf("login STS factory returned nil")
+		}
+		return stsAPI, nil
+	}
+	if s.STS == nil {
+		return nil, fmt.Errorf("login STS client is not configured")
+	}
+	return s.STS, nil
 }
 
 func (s *LoginService) now() time.Time {
