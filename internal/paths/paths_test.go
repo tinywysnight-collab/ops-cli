@@ -21,6 +21,9 @@ func TestConfigDirEnvOverride(t *testing.T) {
 // ~/.kube/config, derived from the home directory so the default-merge path has
 // a single source of truth ($HOME-driven, overridable in tests).
 func TestDefaultKubeConfigHonorsHome(t *testing.T) {
+	// Clear the override so a developer's ambient OPSX_DEFAULT_KUBECONFIG cannot
+	// mask the $HOME-derived default this test asserts.
+	t.Setenv(paths.EnvDefaultKubeConfig, "")
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	got, err := paths.DefaultKubeConfig()
