@@ -117,9 +117,10 @@ auth:
 
 **Region resolution** (AWS SDK needs a region to resolve the STS endpoint):
 
-- `opsx use`: `accounts.<alias>.region` → `auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`
+- `opsx use`: `--region` flag (if given) → `accounts.<alias>.region` → `auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`
 - `opsx login`: `auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`
 - `clusters.<alias>.region` is the EKS region for `update-kubeconfig`, distinct from STS region.
+- `opsx use <alias> --region <region>` overrides the exported session region for that terminal (same account, different region for plain `aws`). `opsx status` then shows that region.
 
 Optional Entra endpoint overrides (`auth.entra.base_url`, `ms_login_url`, `myapps_url`) default to
 `https://auth.entra.io`. Set `auth.entra.debug: true` for sanitized stderr troubleshooting logs
@@ -135,6 +136,7 @@ opsx login --opr           # second master role (master_AWSOpr); both coexist
 opsx mode opr              # set this terminal's default mode (or use --opr per command)
 
 opsx use dev               # assume citizen role → AWS_PROFILE=dev.admin (no MFA, < 2s)
+opsx use dev --region us-west-2   # same account, override the session AWS_REGION for plain `aws`
 opsx kube dev-syd          # update kubeconfig → per-terminal KUBECONFIG + merge into ~/.kube/config
 opsx logout                # purge this mode's opsx-managed cached credentials/state
 

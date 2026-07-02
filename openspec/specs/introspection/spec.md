@@ -7,7 +7,7 @@ Surface the current terminal's active context and the configured aliases: `opsx 
 ## Requirements
 
 ### Requirement: Show current terminal context
-The system SHALL, on `opsx status`, show the current terminal's active account, mode, cluster, region, and credential expiry, reading expiry from `state.json` without mutating credentials or state. The region shown SHALL be the active cluster's region when a cluster is active, otherwise the account's resolved STS region, so the multi-region context is visible.
+The system SHALL, on `opsx status`, show the current terminal's active account, mode, cluster, region, and credential expiry, reading expiry from `state.json` without mutating credentials or state. The region shown SHALL be the terminal's actual `AWS_REGION` when set — authoritative because `opsx use` (including `--region`) and `opsx kube` export it — falling back to the config-derived region (the active cluster's region when a cluster is active, otherwise the account's resolved STS region) only when the terminal exported none. This keeps a `--region` override visible instead of contradicted by a config-derived value.
 
 Because `status` derives the active profile from the live `AWS_PROFILE`, `KUBECONFIG`, and `OPSX_MODE` environment, it MUST reconcile that environment with recorded state and clearly distinguish three cases: the env profile matches a known state entry; `AWS_PROFILE` is set but is not opsx-managed or has no state entry; or no opsx context is set. A foreign `AWS_PROFILE` MUST be explained explicitly rather than shown as an ambiguous "unknown" state.
 
@@ -23,7 +23,12 @@ The displayed mode MUST reflect the active profile, not a stale `OPSX_MODE`. The
 #### Scenario: Active context displayed
 - **WHEN** `opsx status` runs in a terminal with `AWS_PROFILE` / `KUBECONFIG` / `OPSX_MODE` set to an opsx-managed profile
 - **THEN** it shows the active account, mode, cluster, region, and credential expiry (read from `state.json`) to stdout
-- **AND** the region shown is the active cluster's region (or the account's resolved STS region when no cluster is active)
+- **AND** the region shown is the terminal's `AWS_REGION` when set (else the config-derived region: the active cluster's region, or the account's resolved STS region when no cluster is active)
+
+#### Scenario: Region reflects the terminal's AWS_REGION override
+- **WHEN** `opsx status` runs in a terminal whose `AWS_REGION` was set by `opsx use dev --region us-west-2`
+- **THEN** it shows `Region: us-west-2` (the terminal's actual region)
+- **AND** it does NOT show the account's config-derived home region instead
 
 #### Scenario: Foreign AWS_PROFILE is explained, not mislabeled
 - **WHEN** `AWS_PROFILE` is set to a profile opsx did not create and no matching state entry exists

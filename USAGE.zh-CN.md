@@ -113,9 +113,10 @@ auth:
 
 **区域解析顺序**（AWS SDK 需要区域来解析 STS 端点）：
 
-- `opsx use`：`accounts.<别名>.region` → `auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`
+- `opsx use`：`--region` flag（若给出）→ `accounts.<别名>.region` → `auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`
 - `opsx login`：`auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`
 - `clusters.<别名>.region` 是 `update-kubeconfig` 的 EKS 区域，与 STS 区域相互独立。
+- `opsx use <别名> --region <区域>` 覆盖该终端导出的会话区域（同账号、跑纯 `aws` 打不同 region）。之后 `opsx status` 会显示该区域。
 
 可选的 Entra 端点覆盖（`auth.entra.base_url`、`ms_login_url`、`myapps_url`）默认为
 `https://auth.entra.io`。设置 `auth.entra.debug: true` 可输出脱敏的 stderr 排障日志（绝不记录任何密钥）。
@@ -130,6 +131,7 @@ opsx login --opr           # 第二个 master 角色（master_AWSOpr）；两者
 opsx mode opr              # 设置本终端默认模式（或对每条命令用 --opr）
 
 opsx use dev               # assume citizen 角色 → AWS_PROFILE=dev.admin（无 MFA，< 2s）
+opsx use dev --region us-west-2   # 同账号，覆盖会话 AWS_REGION，用于跑纯 `aws`
 opsx kube dev-syd          # 更新 kubeconfig → 每终端 KUBECONFIG + 合并进 ~/.kube/config
 opsx logout                # 清除本模式下 opsx 管理的缓存凭证/状态
 

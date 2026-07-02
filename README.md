@@ -127,7 +127,9 @@ region passed to `aws eks update-kubeconfig`, distinct from an account's STS/hom
 When the shell integration is installed, `opsx use` also sets `AWS_REGION` and
 `AWS_DEFAULT_REGION` to the account's resolved region for the current terminal. `opsx kube` sets
 them to the active cluster's region, so subsequent `aws` commands in that session do not need a
-manual `--region`.
+manual `--region`. To run plain `aws` against a **different** region of the same account (without
+going through a cluster), pass `opsx use <alias> --region <region>` — it overrides the exported
+session region for that terminal; omit it to keep the account's configured region.
 
 Optional endpoint override fields `auth.entra.base_url`, `auth.entra.ms_login_url`, and
 `auth.entra.myapps_url` default to `https://auth.entra.io` when omitted. They are intentionally

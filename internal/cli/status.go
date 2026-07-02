@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -136,7 +137,15 @@ func newStatusCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				tc.Region = resolveStatusRegion(tc, entries)
+				// The terminal's actual AWS_REGION is authoritative: `opsx use
+				// --region` (or any manual override) must be reflected here rather
+				// than the config-derived region. Fall back to config only when the
+				// terminal exported no region.
+				if r := strings.TrimSpace(os.Getenv("AWS_REGION")); r != "" {
+					tc.Region = r
+				} else {
+					tc.Region = resolveStatusRegion(tc, entries)
+				}
 			}
 			renderStatus(cmd.OutOrStdout(), tc, entries, time.Now())
 			return nil

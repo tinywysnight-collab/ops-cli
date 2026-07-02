@@ -28,8 +28,10 @@ func switchCluster(ctx context.Context, alias, mode string) (profile, kubeconfig
 		return "", "", "", fmt.Errorf("unknown cluster alias %q", alias)
 	}
 
-	// Auto-ensure the cluster's account credentials for this mode (no MFA).
-	profile, _, err = switchAccount(ctx, cluster.Account, mode)
+	// Auto-ensure the cluster's account credentials for this mode (no MFA). No
+	// region override: the cluster's own region (below) is authoritative for the
+	// exported session region, so `opsx kube` never takes a `--region`.
+	profile, _, err = switchAccount(ctx, cluster.Account, mode, "")
 	if err != nil {
 		return "", "", "", err
 	}

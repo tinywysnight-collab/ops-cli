@@ -36,16 +36,17 @@ func (o shellSwitchOptions) parseDialect() (shell.Dialect, error) {
 }
 
 func newShellSwitchUseCommand(opts *shellSwitchOptions) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "use <account-alias>",
-		Short: "Switch account and emit AWS_PROFILE assignment",
+		Short: "Switch account and emit AWS_PROFILE/AWS_REGION assignments",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mode, err := resolveMode(cmd)
 			if err != nil {
 				return err
 			}
-			profile, region, err := switchAccount(cmd.Context(), args[0], mode)
+			regionOverride, _ := cmd.Flags().GetString("region")
+			profile, region, err := switchAccount(cmd.Context(), args[0], mode, regionOverride)
 			if err != nil {
 				return err
 			}
@@ -59,6 +60,8 @@ func newShellSwitchUseCommand(opts *shellSwitchOptions) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().String("region", "", "override the session AWS region for this account (default: the account's configured region)")
+	return cmd
 }
 
 func newShellSwitchKubeCommand(opts *shellSwitchOptions) *cobra.Command {
