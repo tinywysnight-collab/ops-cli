@@ -38,7 +38,7 @@ func switchAccount(ctx context.Context, alias, mode, regionOverride string) (pro
 		return "", "", err
 	}
 	svc := &creds.CitizenService{Cfg: cfg, Creds: cs, State: ss, Assume: citizenAssumer}
-	profile, err = svc.Use(ctx, alias, mode)
+	profile, err = svc.Use(ctx, alias, mode, "")
 	if err != nil {
 		return "", "", err
 	}

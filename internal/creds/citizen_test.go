@@ -56,19 +56,19 @@ func TestUseAssumesCitizenAndWritesProfile(t *testing.T) {
 		},
 	}
 
-	profile, err := svc.Use(context.Background(), "dev", "admin")
+	profile, err := svc.Use(context.Background(), "dev", "admin", "")
 	require.NoError(t, err)
-	require.Equal(t, "dev.admin", profile)
+	require.Equal(t, "dev.admin.Admin", profile)
 	require.Equal(t, "MASTER", gotMaster.AccessKeyID)
 	require.Equal(t, "arn:aws:iam::111111111111:role/Admin", gotRoleARN)
 	require.Contains(t, gotSession, "opsx-")
 
-	got, ok, err := cs.Read("dev.admin")
+	got, ok, err := cs.Read("dev.admin.Admin")
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "CITIZEN", got.AccessKeyID)
 
-	entry, ok, err := ss.Get("dev.admin")
+	entry, ok, err := ss.Get("dev.admin.Admin")
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "dev", entry.Account)
@@ -89,7 +89,7 @@ func TestUseAlsoWritesDefaultProfile(t *testing.T) {
 		},
 	}
 
-	_, err := svc.Use(context.Background(), "dev", "admin")
+	_, err := svc.Use(context.Background(), "dev", "admin", "")
 	require.NoError(t, err)
 
 	def, ok, err := cs.Read("default")
@@ -115,12 +115,12 @@ func TestUseRewritesDefaultOnReuse(t *testing.T) {
 		},
 	}
 
-	_, err := svc.Use(context.Background(), "dev", "admin")
+	_, err := svc.Use(context.Background(), "dev", "admin", "")
 	require.NoError(t, err)
 	// Simulate another account having claimed [default] since the first use.
 	require.NoError(t, cs.Write(context.Background(), "default", creds.Credentials{AccessKeyID: "OTHER", SecretAccessKey: "x", SessionToken: "y"}))
 
-	_, err = svc.Use(context.Background(), "dev", "admin")
+	_, err = svc.Use(context.Background(), "dev", "admin", "")
 	require.NoError(t, err)
 
 	require.Equal(t, 1, assumeCalls, "second use reuses cached citizen creds")
@@ -149,7 +149,7 @@ func TestUsePassesConfiguredRegionToAssume(t *testing.T) {
 		},
 	}
 
-	_, err := svc.Use(context.Background(), "dev", "admin")
+	_, err := svc.Use(context.Background(), "dev", "admin", "")
 	require.NoError(t, err)
 	require.Equal(t, "ap-southeast-2", gotRegion)
 }
@@ -170,9 +170,9 @@ func TestUseReusesUnexpiredCitizen(t *testing.T) {
 		},
 	}
 
-	_, err := svc.Use(context.Background(), "dev", "admin")
+	_, err := svc.Use(context.Background(), "dev", "admin", "")
 	require.NoError(t, err)
-	_, err = svc.Use(context.Background(), "dev", "admin")
+	_, err = svc.Use(context.Background(), "dev", "admin", "")
 	require.NoError(t, err)
 
 	require.Equal(t, 1, assumeCalls, "second use within validity window must reuse cached citizen creds")
@@ -185,8 +185,8 @@ func TestUseReassumesWhenCitizenStale(t *testing.T) {
 	cs, ss := newCitizenStores(t)
 	seedMaster(t, cs, ss, now)
 	// Pre-seed a stale citizen profile.
-	require.NoError(t, cs.Write(context.Background(), "dev.admin", creds.Credentials{AccessKeyID: "OLD", SecretAccessKey: "x", SessionToken: "y"}))
-	require.NoError(t, ss.Put(context.Background(), "dev.admin", state.Entry{Expiry: now.Add(-time.Minute), Account: "dev", Mode: "admin", UpdatedAt: now}))
+	require.NoError(t, cs.Write(context.Background(), "dev.admin.Admin", creds.Credentials{AccessKeyID: "OLD", SecretAccessKey: "x", SessionToken: "y"}))
+	require.NoError(t, ss.Put(context.Background(), "dev.admin.Admin", state.Entry{Expiry: now.Add(-time.Minute), Account: "dev", Mode: "admin", UpdatedAt: now}))
 
 	assumeCalls := 0
 	svc := &creds.CitizenService{
@@ -196,10 +196,10 @@ func TestUseReassumesWhenCitizenStale(t *testing.T) {
 			return creds.Credentials{AccessKeyID: "FRESH", SecretAccessKey: "cs", SessionToken: "ct"}, now.Add(time.Hour), nil
 		},
 	}
-	_, err := svc.Use(context.Background(), "dev", "admin")
+	_, err := svc.Use(context.Background(), "dev", "admin", "")
 	require.NoError(t, err)
 	require.Equal(t, 1, assumeCalls)
-	got, _, _ := cs.Read("dev.admin")
+	got, _, _ := cs.Read("dev.admin.Admin")
 	require.Equal(t, "FRESH", got.AccessKeyID)
 }
 
@@ -207,7 +207,7 @@ func TestUseDoesNotReuseOrphanedCredentialWithoutState(t *testing.T) {
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	cs, ss := newCitizenStores(t)
 	seedMaster(t, cs, ss, now)
-	require.NoError(t, cs.Write(context.Background(), "dev.admin", creds.Credentials{AccessKeyID: "ORPHAN", SecretAccessKey: "old", SessionToken: "oldtoken"}))
+	require.NoError(t, cs.Write(context.Background(), "dev.admin.Admin", creds.Credentials{AccessKeyID: "ORPHAN", SecretAccessKey: "old", SessionToken: "oldtoken"}))
 
 	assumeCalls := 0
 	svc := &creds.CitizenService{
@@ -218,19 +218,19 @@ func TestUseDoesNotReuseOrphanedCredentialWithoutState(t *testing.T) {
 		},
 	}
 
-	profile, err := svc.Use(context.Background(), "dev", "admin")
+	profile, err := svc.Use(context.Background(), "dev", "admin", "")
 	require.NoError(t, err)
-	require.Equal(t, "dev.admin", profile)
+	require.Equal(t, "dev.admin.Admin", profile)
 	require.Equal(t, 1, assumeCalls)
-	got, _, _ := cs.Read("dev.admin")
+	got, _, _ := cs.Read("dev.admin.Admin")
 	require.Equal(t, "FRESH", got.AccessKeyID)
 }
 
 func TestUseValidatesAliasBeforeCachedReuse(t *testing.T) {
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	cs, ss := newCitizenStores(t)
-	require.NoError(t, cs.Write(context.Background(), "removed.admin", creds.Credentials{AccessKeyID: "OLD", SecretAccessKey: "old", SessionToken: "oldtoken"}))
-	require.NoError(t, ss.Put(context.Background(), "removed.admin", state.Entry{Expiry: now.Add(time.Hour), Account: "removed", Mode: "admin", UpdatedAt: now}))
+	require.NoError(t, cs.Write(context.Background(), "removed.admin.Admin", creds.Credentials{AccessKeyID: "OLD", SecretAccessKey: "old", SessionToken: "oldtoken"}))
+	require.NoError(t, ss.Put(context.Background(), "removed.admin.Admin", state.Entry{Expiry: now.Add(time.Hour), Account: "removed", Mode: "admin", UpdatedAt: now}))
 
 	called := false
 	svc := &creds.CitizenService{
@@ -241,7 +241,7 @@ func TestUseValidatesAliasBeforeCachedReuse(t *testing.T) {
 		},
 	}
 
-	_, err := svc.Use(context.Background(), "removed", "admin")
+	_, err := svc.Use(context.Background(), "removed", "admin", "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unknown account")
 	require.False(t, called)
@@ -251,8 +251,8 @@ func TestUseDoesNotReuseCitizenProfileWithoutSessionToken(t *testing.T) {
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	cs, ss := newCitizenStores(t)
 	seedMaster(t, cs, ss, now)
-	require.NoError(t, cs.Write(context.Background(), "dev.admin", creds.Credentials{AccessKeyID: "OLD", SecretAccessKey: "old"}))
-	require.NoError(t, ss.Put(context.Background(), "dev.admin", state.Entry{Expiry: now.Add(time.Hour), Account: "dev", Mode: "admin", UpdatedAt: now}))
+	require.NoError(t, cs.Write(context.Background(), "dev.admin.Admin", creds.Credentials{AccessKeyID: "OLD", SecretAccessKey: "old"}))
+	require.NoError(t, ss.Put(context.Background(), "dev.admin.Admin", state.Entry{Expiry: now.Add(time.Hour), Account: "dev", Mode: "admin", UpdatedAt: now}))
 
 	assumeCalls := 0
 	svc := &creds.CitizenService{
@@ -263,7 +263,7 @@ func TestUseDoesNotReuseCitizenProfileWithoutSessionToken(t *testing.T) {
 		},
 	}
 
-	_, err := svc.Use(context.Background(), "dev", "admin")
+	_, err := svc.Use(context.Background(), "dev", "admin", "")
 	require.NoError(t, err)
 	require.Equal(t, 1, assumeCalls)
 }
@@ -280,7 +280,7 @@ func TestUseFailsWhenMasterHasNoSessionToken(t *testing.T) {
 			return creds.Credentials{}, time.Time{}, nil
 		},
 	}
-	_, err := svc.Use(context.Background(), "dev", "admin")
+	_, err := svc.Use(context.Background(), "dev", "admin", "")
 	require.ErrorIs(t, err, creds.ErrMasterExpired)
 }
 
@@ -308,7 +308,7 @@ func TestConcurrentUseSingleFlightsAssume(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := svc.Use(context.Background(), "dev", "admin")
+			_, err := svc.Use(context.Background(), "dev", "admin", "")
 			errs <- err
 		}()
 	}
@@ -335,7 +335,7 @@ func TestUseFailsWhenMasterExpired(t *testing.T) {
 		},
 	}
 
-	_, err := svc.Use(context.Background(), "dev", "admin")
+	_, err := svc.Use(context.Background(), "dev", "admin", "")
 	require.ErrorIs(t, err, creds.ErrMasterExpired)
 	require.False(t, called, "must not attempt assume when master is expired")
 }
@@ -349,7 +349,7 @@ func TestUseFailsWhenNoMaster(t *testing.T) {
 			return creds.Credentials{}, time.Time{}, nil
 		},
 	}
-	_, err := svc.Use(context.Background(), "dev", "admin")
+	_, err := svc.Use(context.Background(), "dev", "admin", "")
 	require.ErrorIs(t, err, creds.ErrMasterExpired)
 }
 
@@ -360,6 +360,36 @@ func TestSessionNameFromSanitizes(t *testing.T) {
 		got := creds.SessionNameFrom(raw)
 		require.Truef(t, stsRe.MatchString(got), "session name %q (from %q) must satisfy STS regex", got, raw)
 	}
+}
+
+// TestUseRoleOverrideDistinctProfile asserts (a) the default profile includes
+// the mode's default citizen role from config, (b) a --role override changes
+// BOTH the profile name and the assumed role ARN, and (c) default vs override
+// produce distinct profiles (no collision).
+func TestUseRoleOverrideDistinctProfile(t *testing.T) {
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	cs, ss := newCitizenStores(t)
+	seedMaster(t, cs, ss, now)
+
+	var lastRoleARN string
+	svc := &creds.CitizenService{
+		Cfg: citizenConfig(), Creds: cs, State: ss, Now: func() time.Time { return now },
+		Assume: func(_ context.Context, _ creds.Credentials, roleARN, _, _ string) (creds.Credentials, time.Time, error) {
+			lastRoleARN = roleARN
+			return creds.Credentials{AccessKeyID: "CITIZEN", SecretAccessKey: "cs", SessionToken: "ct"}, now.Add(time.Hour), nil
+		},
+	}
+
+	p1, err := svc.Use(context.Background(), "dev", "admin", "")
+	require.NoError(t, err)
+	require.Equal(t, "dev.admin.Admin", p1)
+	require.Contains(t, lastRoleARN, ":role/Admin")
+
+	p2, err := svc.Use(context.Background(), "dev", "admin", "BAU")
+	require.NoError(t, err)
+	require.Equal(t, "dev.admin.BAU", p2)
+	require.Contains(t, lastRoleARN, ":role/BAU")
+	require.NotEqual(t, p1, p2)
 }
 
 func TestSessionNameFromTruncatesSafely(t *testing.T) {

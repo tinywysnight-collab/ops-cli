@@ -56,7 +56,7 @@ func citizenProfileLock(profile string) *sync.Mutex {
 // reused without a second AssumeRole; otherwise it assumes the citizen role
 // using cached master credentials (returning ErrMasterExpired if those are
 // missing or stale).
-func (s *CitizenService) Use(ctx context.Context, alias, mode string) (string, error) {
+func (s *CitizenService) Use(ctx context.Context, alias, mode, roleOverride string) (string, error) {
 	mode, err := config.NormalizeMode(mode)
 	if err != nil {
 		return "", err
@@ -64,8 +64,11 @@ func (s *CitizenService) Use(ctx context.Context, alias, mode string) (string, e
 	if _, ok := s.Cfg.Accounts[alias]; !ok {
 		return "", fmt.Errorf("unknown account alias %q", alias)
 	}
-	// TODO(later task): thread the effective citizen role instead of "".
-	profile := config.CitizenProfile(alias, mode, "")
+	role, err := s.Cfg.EffectiveCitizenRole(mode, roleOverride)
+	if err != nil {
+		return "", err
+	}
+	profile := config.CitizenProfile(alias, mode, role)
 
 	mu := citizenProfileLock(profile)
 	mu.Lock()
@@ -93,7 +96,7 @@ func (s *CitizenService) Use(ctx context.Context, alias, mode string) (string, e
 		return "", err
 	}
 
-	roleARN, err := s.Cfg.CitizenRoleARN(alias, mode, "")
+	roleARN, err := s.Cfg.CitizenRoleARN(alias, mode, roleOverride)
 	if err != nil {
 		return "", err
 	}

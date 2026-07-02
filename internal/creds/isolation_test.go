@@ -48,19 +48,19 @@ func TestCrossTerminalNoCollision(t *testing.T) {
 	}
 
 	// Terminal A: non-prod as admin. Terminal B: prod as opr.
-	pa, err := newSvc("CRED-A").Use(context.Background(), "dev", "admin")
+	pa, err := newSvc("CRED-A").Use(context.Background(), "dev", "admin", "")
 	require.NoError(t, err)
-	pb, err := newSvc("CRED-B").Use(context.Background(), "prod", "opr")
+	pb, err := newSvc("CRED-B").Use(context.Background(), "prod", "opr", "")
 	require.NoError(t, err)
 
-	require.Equal(t, "dev.admin", pa)
-	require.Equal(t, "prod.opr", pb)
+	require.Equal(t, "dev.admin.Admin", pa)
+	require.Equal(t, "prod.opr.AWSOpr", pb)
 	require.NotEqual(t, pa, pb)
 
-	a, ok, _ := cs.Read("dev.admin")
+	a, ok, _ := cs.Read("dev.admin.Admin")
 	require.True(t, ok)
 	require.Equal(t, "CRED-A", a.AccessKeyID)
-	b, ok, _ := cs.Read("prod.opr")
+	b, ok, _ := cs.Read("prod.opr.AWSOpr")
 	require.True(t, ok)
-	require.Equal(t, "CRED-B", b.AccessKeyID, "prod.opr must not be overwritten by dev.admin")
+	require.Equal(t, "CRED-B", b.AccessKeyID, "prod.opr.AWSOpr must not be overwritten by dev.admin.Admin")
 }
