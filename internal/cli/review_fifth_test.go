@@ -151,7 +151,7 @@ func TestShellSwitchKubeConfirmsBothSwitches(t *testing.T) {
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		require.True(t, strings.HasPrefix(line, "export "), "stdout must be export-only, got %q", line)
 	}
-	require.Regexp(t, `account.*AWS_PROFILE=dev\.admin`, errOut)
+	require.Regexp(t, `account.*AWS_PROFILE=dev\.admin\.Admin`, errOut)
 	require.Regexp(t, `cluster.*dev-syd`, errOut)
 }
 
@@ -165,7 +165,7 @@ func TestBareKubeConfirmsBothSwitches(t *testing.T) {
 	out, errOut, err := runOutErr(t, "kube", "dev-syd")
 	require.NoError(t, err)
 	require.Empty(t, strings.TrimSpace(out), "bare kube must not write to stdout")
-	require.Regexp(t, `account.*AWS_PROFILE=dev\.admin`, errOut)
+	require.Regexp(t, `account.*AWS_PROFILE=dev\.admin\.Admin`, errOut)
 	require.Regexp(t, `cluster.*dev-syd`, errOut)
 }
 
@@ -257,19 +257,19 @@ func TestShellSwitchPowerShellUseKubeAndModeEmitAssignments(t *testing.T) {
 
 	useOut, _, err := runOutErr(t, "shell-switch", "--shell", "powershell", "use", "dev")
 	require.NoError(t, err)
-	require.Equal(t, "dev.admin", powershellEnvValue(useOut, "AWS_PROFILE"))
+	require.Equal(t, "dev.admin.Admin", powershellEnvValue(useOut, "AWS_PROFILE"))
 	require.Equal(t, "us-east-1", powershellEnvValue(useOut, "AWS_REGION"))
 	require.Equal(t, "us-east-1", powershellEnvValue(useOut, "AWS_DEFAULT_REGION"))
 	require.NotContains(t, useOut, "export ")
 
 	kubeOut, errOut, err := runOutErr(t, "shell-switch", "--shell", "powershell", "kube", "dev-syd")
 	require.NoError(t, err)
-	require.Equal(t, "dev.admin", powershellEnvValue(kubeOut, "AWS_PROFILE"))
+	require.Equal(t, "dev.admin.Admin", powershellEnvValue(kubeOut, "AWS_PROFILE"))
 	require.Equal(t, "ap-southeast-2", powershellEnvValue(kubeOut, "AWS_REGION"))
 	require.Equal(t, "ap-southeast-2", powershellEnvValue(kubeOut, "AWS_DEFAULT_REGION"))
 	require.NotEmpty(t, powershellEnvValue(kubeOut, "KUBECONFIG"))
 	require.NotContains(t, kubeOut, "export ")
-	require.Regexp(t, `account.*AWS_PROFILE=dev\.admin`, errOut)
+	require.Regexp(t, `account.*AWS_PROFILE=dev\.admin\.Admin`, errOut)
 	require.Regexp(t, `cluster.*dev-syd`, errOut)
 
 	modeOut, _, err := runOutErr(t, "shell-switch", "--shell", "powershell", "mode", "opr")
@@ -285,7 +285,7 @@ func TestShellSwitchCmdUseKubeAndModeEmitAssignments(t *testing.T) {
 
 	useOut, _, err := runOutErr(t, "shell-switch", "--shell", "cmd", "use", "dev")
 	require.NoError(t, err)
-	require.Equal(t, "dev.admin", cmdEnvValue(useOut, "AWS_PROFILE"))
+	require.Equal(t, "dev.admin.Admin", cmdEnvValue(useOut, "AWS_PROFILE"))
 	require.Equal(t, "us-east-1", cmdEnvValue(useOut, "AWS_REGION"))
 	require.Equal(t, "us-east-1", cmdEnvValue(useOut, "AWS_DEFAULT_REGION"))
 	require.NotContains(t, useOut, "export ")
@@ -293,13 +293,13 @@ func TestShellSwitchCmdUseKubeAndModeEmitAssignments(t *testing.T) {
 
 	kubeOut, errOut, err := runOutErr(t, "shell-switch", "--shell", "cmd", "kube", "dev-syd")
 	require.NoError(t, err)
-	require.Equal(t, "dev.admin", cmdEnvValue(kubeOut, "AWS_PROFILE"))
+	require.Equal(t, "dev.admin.Admin", cmdEnvValue(kubeOut, "AWS_PROFILE"))
 	require.Equal(t, "ap-southeast-2", cmdEnvValue(kubeOut, "AWS_REGION"))
 	require.Equal(t, "ap-southeast-2", cmdEnvValue(kubeOut, "AWS_DEFAULT_REGION"))
 	require.NotEmpty(t, cmdEnvValue(kubeOut, "KUBECONFIG"))
 	require.NotContains(t, kubeOut, "export ")
 	require.NotContains(t, kubeOut, "$env:")
-	require.Regexp(t, `account.*AWS_PROFILE=dev\.admin`, errOut)
+	require.Regexp(t, `account.*AWS_PROFILE=dev\.admin\.Admin`, errOut)
 	require.Regexp(t, `cluster.*dev-syd`, errOut)
 
 	modeOut, _, err := runOutErr(t, "shell-switch", "--shell", "cmd", "mode", "opr")

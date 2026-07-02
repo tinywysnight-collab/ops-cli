@@ -31,7 +31,7 @@ func switchCluster(ctx context.Context, alias, mode string) (profile, kubeconfig
 	// Auto-ensure the cluster's account credentials for this mode (no MFA). No
 	// region override: the cluster's own region (below) is authoritative for the
 	// exported session region, so `opsx kube` never takes a `--region`.
-	profile, _, err = switchAccount(ctx, cluster.Account, mode, "")
+	profile, _, err = switchAccount(ctx, cluster.Account, mode, "", "")
 	if err != nil {
 		return "", "", "", err
 	}

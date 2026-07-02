@@ -46,7 +46,8 @@ func newShellSwitchUseCommand(opts *shellSwitchOptions) *cobra.Command {
 				return err
 			}
 			regionOverride, _ := cmd.Flags().GetString("region")
-			profile, region, err := switchAccount(cmd.Context(), args[0], mode, regionOverride)
+			roleOverride, _ := cmd.Flags().GetString("role")
+			profile, region, err := switchAccount(cmd.Context(), args[0], mode, regionOverride, roleOverride)
 			if err != nil {
 				return err
 			}
@@ -61,6 +62,7 @@ func newShellSwitchUseCommand(opts *shellSwitchOptions) *cobra.Command {
 		},
 	}
 	cmd.Flags().String("region", "", "override the session AWS region for this account (default: the account's configured region)")
+	cmd.Flags().String("role", "", "override the citizen role to assume (default: the mode's configured citizen role)")
 	return cmd
 }
 

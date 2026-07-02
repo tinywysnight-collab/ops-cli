@@ -154,28 +154,28 @@ func TestIntegrationLoginUseKubeStatus(t *testing.T) {
 
 	// shell-switch use → export AWS_PROFILE + citizen profile written
 	useOut := run(t, "shell-switch", "use", "dev")
-	require.Equal(t, "dev.admin", exportValue(useOut, "AWS_PROFILE"))
+	require.Equal(t, "dev.admin.Admin", exportValue(useOut, "AWS_PROFILE"))
 	require.Equal(t, "us-east-1", exportValue(useOut, "AWS_REGION"))
 	require.Equal(t, "us-east-1", exportValue(useOut, "AWS_DEFAULT_REGION"))
 	data, _ = os.ReadFile(cred)
-	require.Contains(t, string(data), "[dev.admin]")
+	require.Contains(t, string(data), "[dev.admin.Admin]")
 	require.Contains(t, string(data), "CITIZENAK")
 
 	// shell-switch kube → exports BOTH AWS_PROFILE and KUBECONFIG (13.2);
 	// --profile reached update-kubeconfig (R2)
 	kubeOut := run(t, "shell-switch", "kube", "dev-syd")
-	require.True(t, strings.HasPrefix(kubeOut, "export AWS_PROFILE=dev.admin\n"), "kube must emit AWS_PROFILE first; got %q", kubeOut)
+	require.True(t, strings.HasPrefix(kubeOut, "export AWS_PROFILE=dev.admin.Admin\n"), "kube must emit AWS_PROFILE first; got %q", kubeOut)
 	require.Contains(t, kubeOut, "\nexport AWS_REGION=ap-southeast-2\n")
 	require.Contains(t, kubeOut, "\nexport AWS_DEFAULT_REGION=ap-southeast-2\n")
 	require.Contains(t, kubeOut, "\nexport KUBECONFIG=")
 	require.Contains(t, gotKubeArgs, "--profile")
-	require.Contains(t, gotKubeArgs, "dev.admin")
+	require.Contains(t, gotKubeArgs, "dev.admin.Admin")
 
 	// status → reflects active account, mode, and cluster. It reads AWS_PROFILE
 	// from the env, so simulate what the eval'd shell would have set.
-	t.Setenv("AWS_PROFILE", "dev.admin")
+	t.Setenv("AWS_PROFILE", "dev.admin.Admin")
 	statusOut := run(t, "status")
-	require.Contains(t, statusOut, "dev.admin")
+	require.Contains(t, statusOut, "dev.admin.Admin")
 	require.Contains(t, statusOut, "Account:")
 	require.Contains(t, statusOut, "dev-syd")
 	// Valid, just-ensured credentials must never be reported as EXPIRED.
@@ -235,7 +235,7 @@ func TestIntegrationBareKubeSetsProfileAndStatus(t *testing.T) {
 			kubeconfig = v
 		}
 	}
-	require.Equal(t, "dev.admin", profile, "bare kube must export AWS_PROFILE")
+	require.Equal(t, "dev.admin.Admin", profile, "bare kube must export AWS_PROFILE")
 	require.Equal(t, "ap-southeast-2", region, "bare kube must export AWS_REGION")
 	require.Equal(t, "ap-southeast-2", defaultRegion, "bare kube must export AWS_DEFAULT_REGION")
 	require.NotEmpty(t, kubeconfig, "bare kube must export KUBECONFIG")
@@ -333,7 +333,7 @@ func TestIntegrationKubeMergesDefaultKubeconfig(t *testing.T) {
 	require.NotContains(t, defaultMerge, "dev-syd",
 		"the friendly opsx alias must not appear in the default merge args")
 	require.Contains(t, defaultMerge, "--profile")
-	require.Contains(t, defaultMerge, "dev.admin")
+	require.Contains(t, defaultMerge, "dev.admin.Admin")
 
 	// Additive: opsx itself never rewrote/removed the unrelated default file.
 	data, err := os.ReadFile(defaultKube)

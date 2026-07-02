@@ -14,7 +14,7 @@ func TestUseRegionOverride(t *testing.T) {
 	run(t, "login")
 
 	out := run(t, "shell-switch", "use", "dev", "--region", "us-west-2")
-	require.Equal(t, "dev.admin", exportValue(out, "AWS_PROFILE"))
+	require.Equal(t, "dev.admin.Admin", exportValue(out, "AWS_PROFILE"))
 	require.Equal(t, "us-west-2", exportValue(out, "AWS_REGION"))
 	require.Equal(t, "us-west-2", exportValue(out, "AWS_DEFAULT_REGION"))
 }
