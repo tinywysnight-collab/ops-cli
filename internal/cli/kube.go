@@ -56,14 +56,18 @@ func switchCluster(ctx context.Context, alias, mode string) (profile, kubeconfig
 		return "", "", "", err
 	}
 	// Additive merge into the default ~/.kube/config so `kubectl` works with no
-	// KUBECONFIG set (locked-down PowerShell / Command Prompt). The friendly
-	// alias becomes current-context; the AWS CLI's own merge preserves the
-	// user's unrelated contexts. This always reflects the latest `opsx kube`.
+	// KUBECONFIG set (locked-down PowerShell / Command Prompt). The real EKS
+	// cluster name (not the friendly opsx alias) becomes the context name and
+	// current-context; the AWS CLI's own merge preserves the user's unrelated
+	// contexts. This always reflects the latest `opsx kube`. Two clusters that
+	// share a real name (e.g. same name across accounts/regions) map to one
+	// context here — the latest switch wins — which the operator accepts by
+	// choosing real-name contexts over the collision-free ARN.
 	defaultKubeconfig, err := paths.DefaultKubeConfig()
 	if err != nil {
 		return "", "", "", err
 	}
-	if err := svc.UpdateKubeconfig(ctx, cluster.Region, cluster.Name, defaultKubeconfig, profile, alias); err != nil {
+	if err := svc.UpdateKubeconfig(ctx, cluster.Region, cluster.Name, defaultKubeconfig, profile, cluster.Name); err != nil {
 		return "", "", "", err
 	}
 

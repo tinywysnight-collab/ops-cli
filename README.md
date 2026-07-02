@@ -187,15 +187,19 @@ to, via AWS's default-profile fallback. No env var, no `eval`, no `init` require
 
 The same idea applies to clusters. Every `opsx kube <alias>` also merges the cluster into the
 default kubeconfig at `~/.kube/config` (via `aws eks update-kubeconfig`, which carries
-`--profile <alias>.<mode>` in the generated exec block) and sets it as `current-context`. So
-`kubectl` targets the cluster — and authenticates as the cluster's account — with **no**
-`KUBECONFIG`, shell function, or `eval`, covering locked-down PowerShell / Command Prompt. The
-merge is unconditional (opsx is a local single-user tool; no flag, no config toggle).
+`--profile <alias>.<mode>` in the generated exec block) and sets it as `current-context`. The
+context is named by the cluster's **real EKS name** (`clusters.<alias>.name`), not the friendly
+opsx alias. So `kubectl` targets the cluster — and authenticates as the cluster's account — with
+**no** `KUBECONFIG`, shell function, or `eval`, covering locked-down PowerShell / Command Prompt.
+The merge is unconditional (opsx is a local single-user tool; no flag, no config toggle).
 
 - `~/.kube/config` always reflects your **most recent** `opsx kube` across all terminals, so it
   provides **no** per-terminal isolation on its own. Terminals that inject `KUBECONFIG` via the
   installed shell function stay isolated through their per-`(cluster,mode)` files — that path is
   unchanged, and `KUBECONFIG` takes precedence over `~/.kube/config`, so the merge is purely additive.
+- The context name (the real EKS cluster name) is **not** globally unique: two clusters sharing a
+  real name across accounts/regions collapse to one context here, latest-switch-wins. The
+  per-`(cluster,mode)` `KUBECONFIG` (keyed by alias+mode) remains collision-free for isolation.
 - The AWS CLI's own merge preserves your unrelated `clusters` / `contexts` / `users` entries; opsx
   passes no destructive flag and creates `~/.kube` if it does not exist.
 - `opsx logout` does **not** edit `~/.kube/config` (editing structured kubeconfig YAML is out of

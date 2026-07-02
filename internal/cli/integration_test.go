@@ -321,9 +321,17 @@ func TestIntegrationKubeMergesDefaultKubeconfig(t *testing.T) {
 	// Per-cluster write is unchanged: no friendly alias.
 	require.NotContains(t, perCluster, "--alias")
 
-	// Default merge carries the cluster alias (as current-context) and profile.
+	// Default merge names the context by the REAL EKS cluster name (as
+	// current-context), not the friendly opsx alias, and carries the profile.
 	require.Contains(t, defaultMerge, "--alias")
-	require.Contains(t, defaultMerge, "dev-syd")
+	for i, a := range defaultMerge {
+		if a == "--alias" {
+			require.Equal(t, "dev-eks-cluster-01", defaultMerge[i+1],
+				"default merge context must be the real cluster name, not the friendly alias")
+		}
+	}
+	require.NotContains(t, defaultMerge, "dev-syd",
+		"the friendly opsx alias must not appear in the default merge args")
 	require.Contains(t, defaultMerge, "--profile")
 	require.Contains(t, defaultMerge, "dev.admin")
 

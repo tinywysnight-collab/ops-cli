@@ -167,13 +167,16 @@ opsx 会写入两个**默认**位置，使普通 `aws` / `kubectl` 即使在 ops
 ### 默认 kubeconfig（`~/.kube/config`）
 
 每次 `opsx kube <别名>` **还会**通过 `aws eks update-kubeconfig` 把集群合并进 `~/.kube/config`
-（在生成的 exec 块中携带 `--profile <别名>.<模式>`）并设为 `current-context`。因此 `kubectl` 在
+（在生成的 exec 块中携带 `--profile <别名>.<模式>`）并设为 `current-context`。该 context 名用集群的
+**真实 EKS 名**（`clusters.<别名>.name`），而**不是** opsx 的 friendly 别名。因此 `kubectl` 在
 **没有** `KUBECONFIG`、shell 函数或 `eval` 的情况下也能指向该集群，并以集群账号身份认证。该合并是无条件的
 （opsx 是本地单用户工具）。
 
 - `~/.kube/config` 反映所有终端中**最近一次** `opsx kube`——此处不做多终端隔离。已安装 shell 函数的
   终端通过各自每 `(集群,模式)` 的 `KUBECONFIG` 保持隔离，而 `KUBECONFIG` 优先于 `~/.kube/config`，
   因此该合并纯属增量。
+- context 名是真实 EKS 集群名，**并非**全局唯一：跨账号/区域同名的两个集群会在此处合并成同一个 context，
+  最近一次切换覆盖之前的。需要无碰撞隔离时，请用每 `(集群,模式)` 的 `KUBECONFIG`（按 别名+模式 命名）。
 - AWS CLI 自身的合并会保留你无关的 `clusters`/`contexts`/`users` 条目；opsx 不传任何破坏性参数，
   并在 `~/.kube` 缺失时创建它。
 - `opsx logout` **不会**修改 `~/.kube/config`。

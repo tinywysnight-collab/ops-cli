@@ -175,13 +175,17 @@ target the account you last switched to via AWS's default-profile fallback — n
 
 Every `opsx kube <alias>` **also** merges the cluster into `~/.kube/config` via
 `aws eks update-kubeconfig` (carrying `--profile <alias>.<mode>` in the generated exec block) and
-sets it as `current-context`. So `kubectl` targets the cluster — and authenticates as the
-cluster's account — with **no** `KUBECONFIG`, shell function, or `eval`. The merge is unconditional
-(opsx is a local single-user tool).
+sets it as `current-context`. The context is named by the cluster's **real EKS name**
+(`clusters.<alias>.name`), not the friendly opsx alias. So `kubectl` targets the cluster — and
+authenticates as the cluster's account — with **no** `KUBECONFIG`, shell function, or `eval`. The
+merge is unconditional (opsx is a local single-user tool).
 
 - `~/.kube/config` reflects your **most recent** `opsx kube` across all terminals — no per-terminal
   isolation there. Function-installed terminals stay isolated via their per-`(cluster,mode)`
   `KUBECONFIG`, which takes precedence over `~/.kube/config`, so the merge is purely additive.
+- The context name is the real EKS cluster name, which is **not** globally unique: two clusters that
+  share a real name (across accounts/regions) collapse to one context here, latest-switch-wins. Use
+  the per-`(cluster,mode)` `KUBECONFIG` (keyed by alias+mode) when you need collision-free contexts.
 - The AWS CLI's own merge preserves your unrelated `clusters`/`contexts`/`users`; opsx passes no
   destructive flag and creates `~/.kube` if missing.
 - `opsx logout` does **not** edit `~/.kube/config`.
