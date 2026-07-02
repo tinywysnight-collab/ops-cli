@@ -71,19 +71,24 @@ Expected: FAIL (NormalizeMode rejects prod-admin; validation still enforces exac
 Replace the body of `NormalizeMode` with a shell-safe token check (keep `ModeAdmin`/`ModeOpr` constants; mode validity-vs-config is enforced by `Validate` + ARN lookups):
 
 ```go
-// modeTokenPattern is the charset allowed for a mode token. A mode appears in
-// the exported AWS_PROFILE value, so it must be shell-safe.
-var modeTokenPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+// modeTokenPattern is the charset allowed for a mode token. A mode is used both
+// as an exported AWS_PROFILE segment AND as a filesystem path segment
+// (paths.KubeConfig joins kube/<mode>/...), so it must be shell-safe AND must
+// exclude "." — that keeps "." reserved as the profile-name separator and
+// prevents a mode like ".." from escaping the kube directory.
+var modeTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 // NormalizeMode validates a mode token's format. Whether the token is a
 // configured mode is enforced by Validate (key sets) and the *RoleARN lookups.
 func NormalizeMode(s string) (string, error) {
 	if !modeTokenPattern.MatchString(s) {
-		return "", fmt.Errorf("invalid mode %q: must match [A-Za-z0-9._-]+", s)
+		return "", fmt.Errorf("invalid mode %q: must match [A-Za-z0-9_-]+", s)
 	}
 	return s, nil
 }
 ```
+
+> Note: `modeTokenPattern` is also referenced in `validateAuth` (Step 4). Because it now excludes `.`, `paths.KubeConfig("dev", "syd.admin")` correctly errors again (the existing `TestKubeConfigEncodesDotAliasesUnambiguously` invariant), and `..` can never be a mode.
 
 - [ ] **Step 4: Rewrite the mode loop in `validateAuth`** (`internal/config/config.go`, the `for _, mode := range supportedModes` block)
 
