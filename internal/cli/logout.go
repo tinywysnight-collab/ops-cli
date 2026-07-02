@@ -47,7 +47,19 @@ func runLogout(ctx context.Context, mode string, all bool) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	profiles, err := logoutProfiles(mode, all, entries)
+	// For `--all`, drive master-profile deletion from the configured mode set so
+	// a config-only mode (e.g. prod-admin) is purged even if its master state
+	// entry is somehow absent. Loading config is best-effort: a missing/invalid
+	// config must not block logout — the state-entry fallback in logoutProfiles
+	// still catches every opsx-managed profile (and any mode since removed from
+	// config).
+	var configuredModes []string
+	if all {
+		if cfg, cErr := loadConfig(); cErr == nil {
+			configuredModes = cfg.Modes()
+		}
+	}
+	profiles, err := logoutProfiles(mode, all, entries, configuredModes)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +72,7 @@ func runLogout(ctx context.Context, mode string, all bool) ([]string, error) {
 	return profiles, nil
 }
 
-func logoutProfiles(mode string, all bool, entries map[string]state.Entry) ([]string, error) {
+func logoutProfiles(mode string, all bool, entries map[string]state.Entry, configuredModes []string) ([]string, error) {
 	mode, err := config.NormalizeMode(mode)
 	if err != nil {
 		return nil, err
@@ -77,11 +89,16 @@ func logoutProfiles(mode string, all bool, entries map[string]state.Entry) ([]st
 		return nil
 	}
 	if all {
-		if err := addMaster(config.ModeAdmin); err != nil {
-			return nil, err
-		}
-		if err := addMaster(config.ModeOpr); err != nil {
-			return nil, err
+		// Config-driven: delete the master profile of every configured mode.
+		// admin/opr are always included as a config-free baseline (so logout
+		// works even if config could not be loaded). addMaster is a no-op for a
+		// profile not actually on disk. The state-entry loop below is the
+		// belt-and-suspenders fallback: it catches any opsx-managed profile whose
+		// mode is no longer in config (an orphaned master/citizen cred).
+		for _, m := range append([]string{config.ModeAdmin, config.ModeOpr}, configuredModes...) {
+			if err := addMaster(m); err != nil {
+				return nil, err
+			}
 		}
 		for profile, entry := range entries {
 			if isOpsxManagedEntry(entry) {

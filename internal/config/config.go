@@ -311,6 +311,14 @@ func (c *Config) ResolveCitizenRegion(alias string) (string, error) {
 	return "", fmt.Errorf("no AWS region for account %q: set accounts.%s.region or auth.region in config (or AWS_REGION/AWS_DEFAULT_REGION)", alias, alias)
 }
 
+// Modes returns the configured mode names (the sorted keys of auth.master_roles).
+// Validation guarantees master_roles and citizen_roles share this key set, so it
+// is the authoritative set of selectable modes — used e.g. to drive
+// `opsx logout --all` from config rather than a hardcoded admin/opr pair.
+func (c *Config) Modes() []string {
+	return sortedKeys(c.Auth.MasterRoles)
+}
+
 func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {

@@ -21,7 +21,7 @@ func TestLogoutPlanDefaultMode(t *testing.T) {
 		"master_awsopr": {Account: "master", Mode: "opr"},
 		"legacy":        {Account: "", Mode: ""},
 	}
-	got, err := logoutProfiles("admin", false, entries)
+	got, err := logoutProfiles("admin", false, entries, nil)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"master_admin", "dev.admin", "default"}, got)
 }
@@ -33,7 +33,7 @@ func TestLogoutPlanAll(t *testing.T) {
 		"prod.opr":      {Account: "prod", Mode: "opr"},
 		"master_awsopr": {Account: "master", Mode: "opr"},
 	}
-	got, err := logoutProfiles("admin", true, entries)
+	got, err := logoutProfiles("admin", true, entries, nil)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"master_admin", "master_awsopr", "dev.admin", "prod.opr", "default"}, got)
 }
@@ -101,8 +101,22 @@ func TestLogoutAllRemovesExtraModeProfiles(t *testing.T) {
 		"dev.prod-admin.Admin": {Account: "dev", Mode: "prod-admin"},
 		"master_prod-admin":    {Account: "master", Mode: "prod-admin"},
 	}
-	got, err := logoutProfiles("admin", true, entries)
+	// nil configuredModes: proves the state-entry fallback alone still catches an
+	// extra mode's master + citizen profiles (belt-and-suspenders path).
+	got, err := logoutProfiles("admin", true, entries, nil)
 	require.NoError(t, err)
 	require.Contains(t, got, "dev.prod-admin.Admin")
+	require.Contains(t, got, "master_prod-admin")
+}
+
+// TestLogoutAllConfigDrivenMasterProfiles proves `--all` deletes each configured
+// mode's master profile from the config mode set alone — no state entry required.
+// This closes the loop so a config-only mode's master cred is purged even if its
+// state entry is missing (not relying on the isOpsxManagedEntry fallback).
+func TestLogoutAllConfigDrivenMasterProfiles(t *testing.T) {
+	got, err := logoutProfiles("admin", true, map[string]state.Entry{}, []string{"admin", "opr", "prod-admin"})
+	require.NoError(t, err)
+	require.Contains(t, got, "master_admin")
+	require.Contains(t, got, "master_awsopr")
 	require.Contains(t, got, "master_prod-admin")
 }
