@@ -64,6 +64,27 @@ Validation MUST additionally enforce well-formedness of values interpolated into
 - **WHEN** two accounts share the same `account_id`
 - **THEN** validation fails at load naming both offending aliases
 
+### Requirement: Config-driven mode set
+The system SHALL derive the set of valid `mode` values entirely from configuration: the valid modes are the key set of `auth.master_roles`, which MUST be identical to the key set of `auth.citizen_roles`. That combined key set MUST include `admin` (the default mode) and `opr` (the `--opr` shorthand); any additional entry (e.g. `prod-admin`) becomes a selectable mode with no code change, chosen via the existing `--mode <name>` flag. Every mode token MUST match `[A-Za-z0-9_-]+` — letters, digits, `_`, and `-`, with NO `.` — because a mode is used both as an exported `AWS_PROFILE` segment and as a filesystem path segment (kubeconfig storage), and excluding `.` keeps it reserved as the profile-name separator and prevents a mode like `".."` from escaping the kube directory. Each configured mode MUST have a default citizen role in `auth.citizen_roles[mode]`, used unless overridden per-switch (see the account-switching spec's `--role` requirement).
+
+#### Scenario: Additional mode is config-only
+- **WHEN** `auth.master_roles` and `auth.citizen_roles` both gain a new key, e.g. `prod-admin`
+- **THEN** `--mode prod-admin` becomes valid on `opsx login` and `opsx use` with no code change
+- **AND** `prod-admin` composes ARNs and profile names exactly like `admin`/`opr`
+
+#### Scenario: Mismatched mode key sets rejected
+- **WHEN** `auth.master_roles` and `auth.citizen_roles` do not define the identical set of mode keys
+- **THEN** validation fails at load naming the offending mode and which map it is missing from
+
+#### Scenario: Mode token charset enforced
+- **WHEN** a mode key in `master_roles`/`citizen_roles` contains a character outside `[A-Za-z0-9_-]+`, for example `"prod.admin"` or `"prod admin"`
+- **THEN** validation fails at load naming the offending mode token
+- **AND** no ARN, profile name, or kube path is composed from the malformed token
+
+#### Scenario: admin and opr remain mandatory
+- **WHEN** `auth.master_roles` or `auth.citizen_roles` omits `admin` or `opr`
+- **THEN** validation fails at load naming the missing required mode
+
 ### Requirement: Configuration-driven STS region
 The system SHALL source the AWS region for every STS call from configuration rather than relying solely on ambient environment, because AWS SDK Go v2 requires a region to resolve the STS endpoint and `opsx login` / `opsx use` would otherwise fail on a machine with no `AWS_REGION`/`AWS_DEFAULT_REGION` and no default in `~/.aws/config`.
 

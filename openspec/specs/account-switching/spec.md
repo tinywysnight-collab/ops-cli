@@ -7,7 +7,7 @@ Switch between AWS citizen accounts by short alias for the current terminal's mo
 ## Requirements
 
 ### Requirement: Switch account by alias
-The system SHALL, on `opsx use <account-alias>`, assume the citizen role for the current terminal's mode using cached master credentials, write the `[<alias>.<mode>]` profile, update state, and complete in under 2 seconds without triggering MFA.
+The system SHALL, on `opsx use <account-alias>`, assume the citizen role for the current terminal's mode using cached master credentials, write the `[<alias>.<mode>.<role>]` profile, update state, and complete in under 2 seconds without triggering MFA. `<role>` is the mode's configured default citizen role unless overridden by `--role` (see the `--role` requirement below).
 
 The account alias MUST be validated against the current loaded config before any cached citizen profile is reused. A profile left behind from an older config MUST NOT allow switching to an account alias that has since been removed or is no longer valid.
 
@@ -19,18 +19,18 @@ When `opsx use` runs through shell integration (`shell-switch` or an installed w
 
 #### Scenario: Successful account switch
 - **WHEN** `opsx use dev` runs with valid cached master creds for the current mode
-- **THEN** the citizen role is assumed using the account's resolved region, the `[dev.<mode>]` profile is written, and state is updated
+- **THEN** the citizen role is assumed using the account's resolved region, the `[dev.<mode>.<role>]` profile is written, and state is updated
 - **AND** it completes in under 2 seconds with no MFA
 
 #### Scenario: Account switch exports session region
 - **WHEN** `opsx use dev` runs through shell integration
-- **THEN** the terminal has `AWS_PROFILE=dev.<mode>` exported
+- **THEN** the terminal has `AWS_PROFILE=dev.<mode>.<role>` exported
 - **AND** `AWS_REGION` and `AWS_DEFAULT_REGION` are set to the account's resolved region
 
 #### Scenario: --region overrides the session region
 - **WHEN** `opsx use dev --region us-west-2` runs through shell integration
 - **THEN** `AWS_REGION` and `AWS_DEFAULT_REGION` are set to `us-west-2` rather than the account's config-resolved region
-- **AND** `AWS_PROFILE=dev.<mode>` is still exported
+- **AND** `AWS_PROFILE=dev.<mode>.<role>` is still exported
 
 #### Scenario: --region rejects an unsafe value
 - **WHEN** `opsx use dev --region` is given a value containing shell metacharacters or whitespace
@@ -41,19 +41,48 @@ When `opsx use` runs through shell integration (`shell-switch` or an installed w
 - **THEN** it fails with the re-login message and exits non-zero
 
 #### Scenario: Removed alias cannot be reused from stale cache
-- **WHEN** a `[dev.<mode>]` profile exists locally but `dev` is no longer present in `config.yaml`
+- **WHEN** a `[dev.<mode>.<role>]` profile exists locally but `dev` is no longer present in `config.yaml`
 - **THEN** `opsx use dev` fails with an unknown-account/config error
 - **AND** it does NOT reuse the stale local profile
+
+### Requirement: --role overrides the mode's default citizen role
+`opsx use` SHALL accept an optional `--role <role>` flag that overrides the mode's configured default citizen role (`auth.citizen_roles[mode]`) for that single switch. When omitted, the mode's configured citizen role is used (unchanged default). The citizen role set is open/extensible — `--role` accepts any value matching the validated charset, not a fixed enum, so a new citizen role (e.g. `BAU`) needs no config or code change.
+
+The override value MUST be validated to `[A-Za-z0-9._-]+`. An invalid value MUST fail with a clear `invalid --role` error and must not reach `AssumeRole` or any exported line.
+
+The citizen profile SHALL be named `<alias>.<mode>.<role>`, encoding the effective citizen role (override or default) so that distinct `(alias, mode, role)` triples never collide — a `--role` override is cached under its own profile and never overwrites the credentials cached for the mode's default role (or another override) on the same alias. This profile-naming scheme applies uniformly, including when `--role` is omitted and the mode's default role is used.
+
+`opsx kube` does NOT accept `--role`: a cluster's citizen role is always its account's mode-default role, since a cluster's kubeconfig is provisioned once per `(cluster, mode)`, not per role override.
+
+#### Scenario: --role overrides the default citizen role
+- **WHEN** `opsx use dev --role BAU` runs with valid cached master creds for the current mode
+- **THEN** the citizen role `BAU` is assumed instead of the mode's configured default citizen role
+- **AND** the `[dev.<mode>.BAU]` profile is written
+
+#### Scenario: Omitting --role uses the mode's default role
+- **WHEN** `opsx use dev` runs with no `--role` flag
+- **THEN** the mode's configured default citizen role (`auth.citizen_roles[mode]`) is assumed
+- **AND** the `[dev.<mode>.<default-role>]` profile is written
+
+#### Scenario: --role rejects an unsafe value
+- **WHEN** `opsx use dev --role` is given a value containing shell metacharacters or whitespace
+- **THEN** the command fails with a clear `invalid --role` error
+- **AND** no `AssumeRole` call is made
+
+#### Scenario: Distinct role overrides never collide
+- **WHEN** `opsx use dev --role Admin` then `opsx use dev --role BAU` run in succession for the same alias and mode
+- **THEN** `[dev.<mode>.Admin]` and `[dev.<mode>.BAU]` are both cached independently
+- **AND** neither switch overwrites the other's profile
 
 ### Requirement: Reuse unexpired citizen credentials
 The system SHALL reuse an existing citizen profile when it is present and not expired (honoring the expiry skew buffer), assuming the citizen role again only when the profile is missing or stale. Re-running `AssumeRole` and rewriting the profile on every `opsx use`/`opsx kube` is wasteful and undermines the "switch in seconds" goal.
 
 #### Scenario: No redundant assume within the validity window
-- **WHEN** `opsx use dev` runs twice in succession while the `[dev.<mode>]` profile is still valid
+- **WHEN** `opsx use dev` runs twice in succession while the `[dev.<mode>.<role>]` profile is still valid
 - **THEN** the second invocation reuses the cached citizen credentials without a second `AssumeRole`
 
 ### Requirement: Per-terminal mode selection
-The system SHALL set the current terminal's default mode via `opsx mode admin|opr`, allow a per-command flag to override it symmetrically, and never persist mode to disk. The override MUST be able to force either mode (not only `opr`): provide a symmetric flag (e.g. `--admin` / `--mode admin|opr`) and define precedence as flag > `OPSX_MODE` > default `admin`.
+The system SHALL set the current terminal's default mode via `opsx mode admin|opr` (or any other configured mode via `--mode <name>`), allow a per-command flag to override it symmetrically, and never persist mode to disk. The override MUST be able to force any configured mode (not only `opr`): provide a symmetric flag (e.g. `--admin` / `--mode <name>`) and define precedence as flag > `OPSX_MODE` > default `admin`. The set of valid mode names is config-driven (see the config spec's "Config-driven mode set" requirement); `admin` and `opr` are always present, and any additional mode configured in `auth.master_roles`/`auth.citizen_roles` is selected the same way via `--mode <name>`.
 
 Conflicting mode flags MUST NOT be resolved silently. When both `--mode` and `--opr` (or any two mutually-exclusive mode selectors) are supplied on the same invocation and they disagree, the command MUST fail with a clear error rather than silently honoring one and ignoring the other.
 
@@ -93,13 +122,13 @@ The system SHALL scope `AWS_PROFILE` to each terminal so that two terminals usin
 - **AND** the two never collide (validated by a deliberate cross-terminal test)
 
 ### Requirement: Default-profile overwrite
-The system SHALL, on every `opsx use <alias>`, additionally write the freshly-assumed citizen credentials into the shared `[default]` profile of `~/.aws/credentials`, in addition to the per-`[<alias>.<mode>]` profile. This makes `aws`/`kubectl` pick up the active account through the AWS default-profile fallback with no `AWS_PROFILE`, shell function, or `eval` — so opsx works in shells where it cannot inject environment variables (Windows PowerShell under a restrictive ExecutionPolicy, Command Prompt). opsx is a local, single-user tool, so the `[default]` profile is treated as opsx-managed and overwritten unconditionally; there is no opt-in flag or config toggle.
+The system SHALL, on every `opsx use <alias>`, additionally write the freshly-assumed citizen credentials into the shared `[default]` profile of `~/.aws/credentials`, in addition to the per-`[<alias>.<mode>.<role>]` profile. This makes `aws`/`kubectl` pick up the active account through the AWS default-profile fallback with no `AWS_PROFILE`, shell function, or `eval` — so opsx works in shells where it cannot inject environment variables (Windows PowerShell under a restrictive ExecutionPolicy, Command Prompt). opsx is a local, single-user tool, so the `[default]` profile is treated as opsx-managed and overwritten unconditionally; there is no opt-in flag or config toggle.
 
-Because `[default]` is a single shared file section, it always reflects the most recent `opsx use` across all terminals and does not by itself provide per-terminal isolation. Terminals that DO inject `AWS_PROFILE` (via the installed shell function) remain isolated through their distinct `[<alias>.<mode>]` profiles; the `[default]` write is an additive convenience that does not change that path. `opsx logout` SHALL also clear the `[default]` profile.
+Because `[default]` is a single shared file section, it always reflects the most recent `opsx use` across all terminals and does not by itself provide per-terminal isolation. Terminals that DO inject `AWS_PROFILE` (via the installed shell function) remain isolated through their distinct `[<alias>.<mode>.<role>]` profiles; the `[default]` write is an additive convenience that does not change that path. `opsx logout` SHALL also clear the `[default]` profile.
 
 #### Scenario: use writes both the named profile and default
 - **WHEN** `opsx use dev` runs
-- **THEN** both `[dev.<mode>]` and `[default]` are written with the same freshly-assumed citizen credentials
+- **THEN** both `[dev.<mode>.<role>]` and `[default]` are written with the same freshly-assumed citizen credentials
 - **AND** `aws` with no `AWS_PROFILE` set uses the `[default]` credentials for `dev`
 
 #### Scenario: default reflects the latest use

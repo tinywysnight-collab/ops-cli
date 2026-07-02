@@ -15,8 +15,8 @@
 | **Master 角色** | 你通过 Entra 联合登录的角色（`master_admin` 或 `master_AWSOpr`）。一次 `opsx login` 缓存约 1 小时。 |
 | **Citizen 账号** | 由 master 角色 `AssumeRole` 进入的目标 AWS 账号。用 `opsx use <别名>` 切换。 |
 | **集群（Cluster）** | 在配置中绑定到某个 citizen 账号的 EKS 集群。用 `opsx kube <别名>` 切换。 |
-| **模式（Mode）** | `admin` 或 `opr`（`AWSOpr`）。属于每个终端的运行时状态，**不写入**配置——一份配置同时服务两种模式。 |
-| **Profile** | `opsx` 写入的 AWS 共享凭证 profile，命名为 `<别名>.<模式>`（如 `dev.admin`）。 |
+| **模式（Mode）** | `admin`、`opr`（`AWSOpr`），或任何你配置的额外模式。属于每个终端的运行时状态，**不写入**配置——一份配置同时服务所有模式。有效模式集由配置驱动（见 §4）。 |
+| **Profile** | `opsx` 写入的 AWS 共享凭证 profile，命名为 `<别名>.<模式>.<角色>`（如 `dev.admin.Admin`）。 |
 
 子进程无法修改父 shell 的环境变量，因此切换类命令（`use`、`kube`、`mode`）需通过一次性安装的
 shell 函数生效（见 §3）。其余命令（`login`、`status`、`ls`、`logout`）作为普通二进制直接运行，无需配置。
@@ -106,10 +106,19 @@ auth:
   master_roles:              # 可配置——不硬编码任何角色名
     admin: master_admin
     opr:   master_AWSOpr
+    prod-admin: master_production_admin   # 任何额外的键即定义一个新模式（仅需配置）
   citizen_roles:
     admin: Admin
     opr:   AWSOpr
+    prod-admin: Admin
 ```
+
+**模式由配置驱动。** 有效的 `--mode` 取值是 `auth.master_roles` 的键集，且必须与 `auth.citizen_roles`
+的键集完全一致；两者都必须包含 `admin` 与 `opr`。只需在配置中新增一个模式（如上面的 `prod-admin`）——
+`opsx login --mode prod-admin` 便会 assume `master_roles.prod-admin`，无需改动代码；Entra/SAML 登录流程
+本身与角色无关（同一个公司 Entra 应用）。模式 token 必须匹配 `[A-Za-z0-9_-]+`（不含 `.`，因为模式同时用作
+文件系统路径段和 profile 名分隔符）。每个模式的默认 citizen 角色是 `citizen_roles[模式]`，可用
+`opsx use --role` 对单次切换覆盖（见 §5）。
 
 **区域解析顺序**（AWS SDK 需要区域来解析 STS 端点）：
 
@@ -128,12 +137,14 @@ auth:
 ```bash
 opsx login                 # Entra + ADFS + MFA → 缓存 master_admin（约 1 小时）
 opsx login --opr           # 第二个 master 角色（master_AWSOpr）；两者共存
-opsx mode opr              # 设置本终端默认模式（或对每条命令用 --opr）
+opsx login --mode prod-admin      # 一个由配置驱动的额外模式（assume master_roles.prod-admin）
+opsx mode opr              # 设置本终端默认模式（或对每条命令用 --opr / --mode）
 
-opsx use dev               # assume citizen 角色 → AWS_PROFILE=dev.admin（无 MFA，< 2s）
+opsx use dev               # assume citizen 角色 → AWS_PROFILE=dev.admin.Admin（无 MFA，< 2s）
+opsx use dev --role BAU    # 覆盖该模式的默认 citizen 角色 → AWS_PROFILE=dev.admin.BAU
 opsx use dev --region us-west-2   # 同账号，覆盖会话 AWS_REGION，用于跑纯 `aws`
 opsx kube dev-syd          # 更新 kubeconfig → 每终端 KUBECONFIG + 合并进 ~/.kube/config
-opsx logout                # 清除本模式下 opsx 管理的缓存凭证/状态
+opsx logout                # 清除本模式下 opsx 管理的缓存凭证/状态（--all 清除所有模式）
 
 opsx ls                    # 列出已配置的账号与集群别名
 opsx status                # 显示本终端的账号、模式、集群与过期时间
@@ -149,6 +160,17 @@ opsx login
 凭证过期时，命令会给出清晰提示：
 `master credentials expired — run: opsx login [--opr]`。
 
+`opsx use` 默认 assume 该模式的默认 citizen 角色（`citizen_roles[模式]`）；`--role <角色>` 对单次切换
+覆盖它。`--role` 为自由取值，校验字符集 `[A-Za-z0-9._-]+`（非法值以 `invalid --role` 失败），且角色集合是
+开放的——`Admin`、`AWSOpr`、`BAU`……都无需配置。`opsx kube` **不接受** `--role`：集群使用其账号在该模式下的
+默认 citizen 角色。
+
+> **Profile 命名迁移。** citizen profile 现在一律命名为 `<别名>.<模式>.<角色>`（如 `dev.admin.Admin`、
+> `dev.admin.BAU`、`dev.prod-admin.Admin`），包括默认角色在内——这样 `--role` 覆盖就不会覆写另一次切换缓存的
+> 凭证。早期版本遗留的旧 `<别名>.<模式>` 缓存会被孤立，但无害：opsx 凭证是短期的，会自行过期，也可运行
+> `opsx logout --all` 立即清除它们（以及每个已配置模式的 profile）。master `admin`/`opr` 的 profile 名保持不变；
+> 任何额外模式缓存为 `master_<模式>`。
+
 ---
 
 ## 6. 在任意 Shell 中工作（无需注入环境变量）
@@ -159,7 +181,7 @@ opsx 会写入两个**默认**位置，使普通 `aws` / `kubectl` 即使在 ops
 ### 默认 AWS profile
 
 `opsx use` 会用刚 assume 出的 citizen 凭证覆盖 `~/.aws/credentials` 中的共享 `[default]` profile
-（同时也写入 `[<别名>.<模式>]`）。因此 `aws`/`kubectl` 通过 AWS 的默认 profile 回退机制即可指向你
+（同时也写入 `[<别名>.<模式>.<角色>]`）。因此 `aws`/`kubectl` 通过 AWS 的默认 profile 回退机制即可指向你
 最近切换的账号——无需环境变量、无需 `eval`。
 
 - `[default]` 反映你**最近一次** `opsx use`（本身不提供多终端隔离）。
@@ -169,7 +191,7 @@ opsx 会写入两个**默认**位置，使普通 `aws` / `kubectl` 即使在 ops
 ### 默认 kubeconfig（`~/.kube/config`）
 
 每次 `opsx kube <别名>` **还会**通过 `aws eks update-kubeconfig` 把集群合并进 `~/.kube/config`
-（在生成的 exec 块中携带 `--profile <别名>.<模式>`）并设为 `current-context`。该 context 名用集群的
+（在生成的 exec 块中携带 `--profile <别名>.<模式>.<角色>`）并设为 `current-context`。该 context 名用集群的
 **真实 EKS 名**（`clusters.<别名>.name`），而**不是** opsx 的 friendly 别名。因此 `kubectl` 在
 **没有** `KUBECONFIG`、shell 函数或 `eval` 的情况下也能指向该集群，并以集群账号身份认证。该合并是无条件的
 （opsx 是本地单用户工具）。
@@ -187,7 +209,7 @@ opsx 会写入两个**默认**位置，使普通 `aws` / `kubectl` 即使在 ops
 
 ## 7. 多终端隔离原理
 
-- Citizen 凭证以标准 `[<别名>.<模式>]` profile 写入 `~/.aws/credentials`；每个终端导出各自的
+- Citizen 凭证以标准 `[<别名>.<模式>.<角色>]` profile 写入 `~/.aws/credentials`；每个终端导出各自的
   `AWS_PROFILE`，账号互不冲突。
 - 每个集群对应 `~/.config/opsx/kube/<模式>/<编码后的集群名>.yaml`；每个终端导出各自的 `KUBECONFIG`，
   上下文互不冲突。（共享的 `~/.kube/config` 合并是“最近覆盖”，不提供隔离，仅用于无 `KUBECONFIG` 的 shell。）

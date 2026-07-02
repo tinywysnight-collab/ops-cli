@@ -44,7 +44,9 @@ When optional `auth.entra.debug` is `true`, the provider SHALL write Entra troub
 - **AND** no password prompt, MFA poll, or Entra HTTP request is required
 
 ### Requirement: Master STS caching for both roles
-The system SHALL exchange the SAML assertion via `AssumeRoleWithSAML` and cache master credentials to `[master_admin]` (default) or `[master_awsopr]` (`--opr`) with a 1h expiry recorded in state. Both caches MUST coexist without overwriting each other.
+The system SHALL exchange the SAML assertion via `AssumeRoleWithSAML` and cache master credentials to `[master_admin]` (default) or `[master_awsopr]` (`--opr`) with a 1h expiry recorded in state. Any other configured mode (selected via `--mode <name>`) caches to `[master_<name>]`. All caches MUST coexist without overwriting each other.
+
+`opsx login --mode <name>` SHALL assume the master role `auth.master_roles[<name>]` — the specific role is entirely config-driven; adding a new master role (e.g. `prod-admin`) requires only a `master_roles`/`citizen_roles` config entry, no code or SAML change. The Entra/SAML assertion fetch itself is role-agnostic: it bootstraps and authenticates against a single company Entra application regardless of mode, and the mode-specific role ARN is chosen only afterward, at `AssumeRoleWithSAML` time via `MasterRoleARN(mode)`.
 
 The `AssumeRoleWithSAML` STS client MUST be built with the region resolved per the config "Configuration-driven STS region" rule (`auth.region` → environment), so login does not depend on an ambient `AWS_REGION`.
 
@@ -52,7 +54,7 @@ The system SHALL fetch the SAML assertion before building the AWS STS client. Th
 
 #### Scenario: Master credentials cached with expiry
 - **WHEN** login completes with a returned SAML assertion
-- **THEN** `AssumeRoleWithSAML` caches master creds to `[master_admin]` (default) or `[master_awsopr]` (`--opr`)
+- **THEN** `AssumeRoleWithSAML` caches master creds to `[master_admin]` (default), `[master_awsopr]` (`--opr`), or `[master_<name>]` (`--mode <name>`)
 - **AND** a 1h expiry is recorded in state
 
 #### Scenario: Login asks Entra before building STS
@@ -63,6 +65,11 @@ The system SHALL fetch the SAML assertion before building the AWS STS client. Th
 #### Scenario: Both master roles coexist
 - **WHEN** both master roles are logged in
 - **THEN** `[master_admin]` and `[master_awsopr]` caches coexist without overwriting each other
+
+#### Scenario: Additional configured mode assumes its config-driven role
+- **WHEN** `opsx login --mode prod-admin` runs and `auth.master_roles.prod-admin` is configured
+- **THEN** the SAML assertion fetch is unchanged (role-agnostic, same Entra application)
+- **AND** `AssumeRoleWithSAML` assumes `auth.master_roles[prod-admin]` and caches to `[master_prod-admin]`
 
 ### Requirement: Secure password collection
 The system SHALL read the login password with no echo, using `OPSX_PASSWORD` instead of prompting when that env var is set. The password MUST never be written to config, credentials, state, or logs, and MUST be held as `[]byte` and zeroized after use.

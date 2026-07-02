@@ -109,13 +109,23 @@ auth:
   master_roles:    # configurable — no role name is hardcoded
     admin: master_admin
     opr:   master_AWSOpr
+    prod-admin: master_production_admin   # any extra key is a new mode, config-only
   citizen_roles:
     admin: Admin
     opr:   AWSOpr
+    prod-admin: Admin
 ```
 
-Mode (`admin` vs `opr`) is **not** stored — it is per-terminal runtime state, so one config
-serves both modes.
+Mode (`admin` vs `opr`, plus any extra mode you configure) is **not** stored — it is per-terminal
+runtime state, so one config serves every mode.
+
+**Modes are config-driven.** The set of valid `--mode` values is the key set of
+`auth.master_roles`, which must exactly match the key set of `auth.citizen_roles`; both must
+include `admin` and `opr`. Add another mode (e.g. `prod-admin` above) purely in config — no code
+change is needed. Mode tokens must match `[A-Za-z0-9_-]+` (no `.`, since a mode is also a
+filesystem path segment and the profile-name separator). `opsx login --mode prod-admin` assumes
+`auth.master_roles.prod-admin`; the Entra/SAML login flow itself is role-agnostic (one company
+Entra app), so adding a master role never touches the SAML/MFA code path.
 
 **STS region is configuration-driven.** AWS SDK Go v2 needs a region to resolve the STS
 endpoint, so `opsx login`/`opsx use` would otherwise fail on a machine with no `AWS_REGION`
@@ -149,9 +159,11 @@ opsx login                 # Entra + ADFS + MFA → cache master_admin (1h)
 export OPSX_SAML_ASSERTION_FILE=/path/to/saml-response.txt
 opsx login                 # optional pre-obtained SAMLResponse escape hatch
 opsx login --opr          # second master role (master_AWSOpr); both coexist
-opsx mode opr             # set this terminal's default mode (or use --opr per command)
+opsx login --mode prod-admin  # a config-driven extra mode (assumes master_roles.prod-admin)
+opsx mode opr             # set this terminal's default mode (or use --opr / --mode per command)
 
-opsx use dev              # assume citizen role → AWS_PROFILE=dev.admin + overwrite [default]  (no MFA, < 2s)
+opsx use dev              # assume citizen role → AWS_PROFILE=dev.admin.Admin + overwrite [default]  (no MFA, < 2s)
+opsx use dev --role BAU   # override the mode's default citizen role → AWS_PROFILE=dev.admin.BAU
 opsx kube dev-syd         # update kubeconfig → per-terminal KUBECONFIG + merge into ~/.kube/config
 opsx logout               # purge this mode's opsx-managed cached credentials/state
 
@@ -161,6 +173,19 @@ opsx status               # show this terminal's account, mode, cluster, and exp
 
 When credentials expire, commands fail with a clear hint (`master credentials expired — run:
 opsx login [--opr]`).
+
+`opsx use dev` picks the citizen role from `citizen_roles[mode]` by default; `--role <role>`
+overrides it for that one switch (free-form, validated `[A-Za-z0-9._-]+`; invalid values fail with
+`invalid --role`). The role set is open — `Admin`, `AWSOpr`, `BAU`, … need no config. `opsx kube`
+does **not** take `--role`: a cluster uses its account's mode-default citizen role.
+
+> **Profile-naming migration.** Citizen AWS profiles are now named `<alias>.<mode>.<role>` (e.g.
+> `dev.admin.Admin`, `dev.admin.BAU`, `dev.prod-admin.Admin`) — always, including the default role
+> — so a `--role` override never overwrites another switch's cached credentials. If you used an
+> earlier build, its old `<alias>.<mode>` citizen profiles/state become orphaned but harmless: opsx
+> credentials are short-lived and expire on their own, or run `opsx logout --all` to clear them
+> immediately. Master `admin`/`opr` profile names are unchanged; any extra mode caches as
+> `master_<mode>`, and `opsx logout --all` clears profiles for every configured mode.
 
 > **Note:** `opsx login` now drives the Entra + ADFS + interactive MFA flow through
 > `internal/auth/entra.go`, then uses the real AWS `AssumeRoleWithSAML` path and caches master
@@ -173,7 +198,7 @@ opsx login [--opr]`).
 ## Default profile (works in any shell, no setup)
 
 `opsx use` also overwrites the shared `[default]` profile in `~/.aws/credentials` with the
-freshly-assumed citizen credentials (in addition to `[<alias>.<mode>]`). So even where opsx
+freshly-assumed citizen credentials (in addition to `[<alias>.<mode>.<role>]`). So even where opsx
 cannot inject `AWS_PROFILE` into your shell — Windows PowerShell under a restrictive
 ExecutionPolicy (where `$PROFILE` and `.ps1` won't run), Command Prompt, or any machine without
 the shell function installed — plain `aws` / `kubectl` still target the account you last switched
@@ -181,7 +206,7 @@ to, via AWS's default-profile fallback. No env var, no `eval`, no `init` require
 
 - `[default]` always reflects your **most recent** `opsx use` (it is a single shared file
   section), so it does **not** provide per-terminal isolation on its own. Terminals that inject
-  `AWS_PROFILE` via the installed shell function stay isolated through their `[<alias>.<mode>]`
+  `AWS_PROFILE` via the installed shell function stay isolated through their `[<alias>.<mode>.<role>]`
   profiles — that path is unchanged.
 - opsx treats `[default]` as opsx-managed and overwrites it unconditionally. If you keep your own
   long-term credentials in `[default]`, move them to a named profile first.
@@ -209,7 +234,7 @@ The merge is unconditional (opsx is a local single-user tool; no flag, no config
 
 ## How isolation works
 
-- Citizen creds are written as standard `[<alias>.<mode>]` profiles in `~/.aws/credentials`;
+- Citizen creds are written as standard `[<alias>.<mode>.<role>]` profiles in `~/.aws/credentials`;
   each terminal exports its own `AWS_PROFILE`, so accounts never collide.
 - Each cluster gets its own `~/.config/opsx/kube/<mode>/<encoded-cluster>.yaml`; each terminal exports
   its own `KUBECONFIG`, so contexts never collide. `opsx kube` additionally merges the cluster into
@@ -226,7 +251,7 @@ The merge is unconditional (opsx is a local single-user tool; no flag, no config
 For different Entra users in different terminals, use separate opsx/AWS storage roots per session:
 set `OPSX_CONFIG_DIR`, `OPSX_CREDENTIALS_FILE`, and, when needed, `OPSX_DEFAULT_KUBECONFIG`
 before running `opsx login`. A shared credentials file is account/mode-isolated, not user-isolated:
-profiles such as `[master_admin]` and `[dev.admin]` are intentionally stable names and would be
+profiles such as `[master_admin]` and `[dev.admin.Admin]` are intentionally stable names and would be
 overwritten by another user using the same storage files.
 
 ## Security notes

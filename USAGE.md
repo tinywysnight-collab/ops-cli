@@ -16,8 +16,8 @@ and full multi-terminal isolation.
 | **Master role** | The Entra-federated role you log in as (`master_admin` or `master_AWSOpr`). One `opsx login` caches it for ~1 hour. |
 | **Citizen account** | A target AWS account reached by `AssumeRole` from the master role. Switched with `opsx use <alias>`. |
 | **Cluster** | An EKS cluster bound (in config) to a citizen account. Switched with `opsx kube <alias>`. |
-| **Mode** | `admin` or `opr` (`AWSOpr`). Per-terminal runtime state, **not** stored in config — one config serves both modes. |
-| **Profile** | The AWS shared-credentials profile `opsx` writes, named `<alias>.<mode>` (e.g. `dev.admin`). |
+| **Mode** | `admin`, `opr` (`AWSOpr`), or any extra mode you configure. Per-terminal runtime state, **not** stored in config — one config serves every mode. The valid set is config-driven (see §4). |
+| **Profile** | The AWS shared-credentials profile `opsx` writes, named `<alias>.<mode>.<role>` (e.g. `dev.admin.Admin`). |
 
 A child process cannot mutate its parent shell's environment, so the switching commands
 (`use`, `kube`, `mode`) take effect through a one-time installed shell function (see §3). Every
@@ -110,10 +110,20 @@ auth:
   master_roles:              # configurable — no role name is hardcoded
     admin: master_admin
     opr:   master_AWSOpr
+    prod-admin: master_production_admin   # any extra key defines a new mode (config-only)
   citizen_roles:
     admin: Admin
     opr:   AWSOpr
+    prod-admin: Admin
 ```
+
+**Modes are config-driven.** The valid `--mode` values are the key set of `auth.master_roles`,
+which must exactly match the key set of `auth.citizen_roles`; both must include `admin` and `opr`.
+Add another mode (e.g. `prod-admin` above) purely in config — `opsx login --mode prod-admin` then
+assumes `master_roles.prod-admin` with no code change, and the Entra/SAML login flow itself is
+role-agnostic (one company Entra app). Mode tokens must match `[A-Za-z0-9_-]+` (no `.`, since a mode
+is also a filesystem path segment and the profile-name separator). Each mode's default citizen role
+is `citizen_roles[mode]`, overridable per-switch with `opsx use --role` (see §5).
 
 **Region resolution** (AWS SDK needs a region to resolve the STS endpoint):
 
@@ -133,12 +143,14 @@ Optional Entra endpoint overrides (`auth.entra.base_url`, `ms_login_url`, `myapp
 ```bash
 opsx login                 # Entra + ADFS + MFA → cache master_admin (~1h)
 opsx login --opr           # second master role (master_AWSOpr); both coexist
-opsx mode opr              # set this terminal's default mode (or use --opr per command)
+opsx login --mode prod-admin      # a config-driven extra mode (assumes master_roles.prod-admin)
+opsx mode opr              # set this terminal's default mode (or use --opr / --mode per command)
 
-opsx use dev               # assume citizen role → AWS_PROFILE=dev.admin (no MFA, < 2s)
+opsx use dev               # assume citizen role → AWS_PROFILE=dev.admin.Admin (no MFA, < 2s)
+opsx use dev --role BAU    # override the mode's default citizen role → AWS_PROFILE=dev.admin.BAU
 opsx use dev --region us-west-2   # same account, override the session AWS_REGION for plain `aws`
 opsx kube dev-syd          # update kubeconfig → per-terminal KUBECONFIG + merge into ~/.kube/config
-opsx logout                # purge this mode's opsx-managed cached credentials/state
+opsx logout                # purge this mode's opsx-managed cached credentials/state (--all for every mode)
 
 opsx ls                    # list configured account & cluster aliases
 opsx status                # show this terminal's account, mode, cluster, and expiry
@@ -154,6 +166,18 @@ opsx login
 When credentials expire, commands fail with a clear hint:
 `master credentials expired — run: opsx login [--opr]`.
 
+`opsx use` assumes the mode's default citizen role (`citizen_roles[mode]`); `--role <role>`
+overrides it for that one switch. `--role` is free-form, validated `[A-Za-z0-9._-]+` (invalid values
+fail with `invalid --role`), and the role set is open — `Admin`, `AWSOpr`, `BAU`, … need no config.
+`opsx kube` does **not** take `--role`: a cluster uses its account's mode-default citizen role.
+
+> **Profile-naming migration.** Citizen profiles are now `<alias>.<mode>.<role>` (e.g.
+> `dev.admin.Admin`, `dev.admin.BAU`, `dev.prod-admin.Admin`) — always, including the default role —
+> so a `--role` override never overwrites another switch's cached credentials. Old `<alias>.<mode>`
+> caches from an earlier build are orphaned but harmless: opsx credentials are short-lived and expire
+> on their own, or run `opsx logout --all` to clear them (and every configured mode's profiles) now.
+> Master `admin`/`opr` profile names are unchanged; any extra mode caches as `master_<mode>`.
+
 ---
 
 ## 6. Working in any shell (no env injection needed)
@@ -165,7 +189,7 @@ machines without the shell function):
 ### Default AWS profile
 
 `opsx use` overwrites the shared `[default]` profile in `~/.aws/credentials` with the
-freshly-assumed citizen credentials (in addition to `[<alias>.<mode>]`). So `aws`/`kubectl`
+freshly-assumed citizen credentials (in addition to `[<alias>.<mode>.<role>]`). So `aws`/`kubectl`
 target the account you last switched to via AWS's default-profile fallback — no env var, no `eval`.
 
 - `[default]` reflects your **most recent** `opsx use` (no per-terminal isolation on its own).
@@ -176,7 +200,7 @@ target the account you last switched to via AWS's default-profile fallback — n
 ### Default kubeconfig (`~/.kube/config`)
 
 Every `opsx kube <alias>` **also** merges the cluster into `~/.kube/config` via
-`aws eks update-kubeconfig` (carrying `--profile <alias>.<mode>` in the generated exec block) and
+`aws eks update-kubeconfig` (carrying `--profile <alias>.<mode>.<role>` in the generated exec block) and
 sets it as `current-context`. The context is named by the cluster's **real EKS name**
 (`clusters.<alias>.name`), not the friendly opsx alias. So `kubectl` targets the cluster — and
 authenticates as the cluster's account — with **no** `KUBECONFIG`, shell function, or `eval`. The
@@ -196,7 +220,7 @@ merge is unconditional (opsx is a local single-user tool).
 
 ## 7. How per-terminal isolation works
 
-- Citizen creds are standard `[<alias>.<mode>]` profiles in `~/.aws/credentials`; each terminal
+- Citizen creds are standard `[<alias>.<mode>.<role>]` profiles in `~/.aws/credentials`; each terminal
   exports its own `AWS_PROFILE`, so accounts never collide.
 - Each cluster gets `~/.config/opsx/kube/<mode>/<encoded-cluster>.yaml`; each terminal exports its
   own `KUBECONFIG`, so contexts never collide. (The shared `~/.kube/config` merge is latest-wins
