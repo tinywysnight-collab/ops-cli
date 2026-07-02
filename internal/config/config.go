@@ -84,14 +84,20 @@ type Config struct {
 // ErrConfigNotFound is returned (wrapped) when the config file is absent.
 var ErrConfigNotFound = errors.New("config file not found")
 
-// NormalizeMode validates and canonicalizes a mode token.
+// modeTokenPattern is the charset allowed for a mode token. A mode is used both
+// as an exported AWS_PROFILE segment AND as a filesystem path segment
+// (paths.KubeConfig joins kube/<mode>/...), so it must be shell-safe AND must
+// exclude "." — that keeps "." reserved as the profile-name separator and
+// prevents a mode like ".." from escaping the kube directory.
+var modeTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// NormalizeMode validates a mode token's format. Whether the token is a
+// configured mode is enforced by Validate (key sets) and the *RoleARN lookups.
 func NormalizeMode(s string) (string, error) {
-	switch s {
-	case ModeAdmin, ModeOpr:
-		return s, nil
-	default:
-		return "", fmt.Errorf("invalid mode %q: must be %q or %q", s, ModeAdmin, ModeOpr)
+	if !modeTokenPattern.MatchString(s) {
+		return "", fmt.Errorf("invalid mode %q: must match [A-Za-z0-9_-]+", s)
 	}
+	return s, nil
 }
 
 // Load reads and decodes config.yaml from path. A missing file yields a clear
@@ -190,12 +196,34 @@ func (c *Config) validateAuth() error {
 	if c.Auth.Region != "" && containsWhitespace(c.Auth.Region) {
 		return fmt.Errorf("auth.region must not be blank or contain whitespace")
 	}
+	// master_roles and citizen_roles must define exactly the same modes, must
+	// include admin (default) and opr (--opr shorthand), and every mode token
+	// must be shell-safe. Additional modes (e.g. prod-admin) are allowed.
+	if len(c.Auth.MasterRoles) == 0 {
+		return fmt.Errorf("auth.master_roles is empty")
+	}
 	for _, mode := range supportedModes {
 		if strings.TrimSpace(c.Auth.MasterRoles[mode]) == "" {
-			return fmt.Errorf("auth.master_roles is missing an entry for mode %q", mode)
+			return fmt.Errorf("auth.master_roles is missing required mode %q", mode)
 		}
 		if strings.TrimSpace(c.Auth.CitizenRoles[mode]) == "" {
-			return fmt.Errorf("auth.citizen_roles is missing an entry for mode %q", mode)
+			return fmt.Errorf("auth.citizen_roles is missing required mode %q", mode)
+		}
+	}
+	for mode, role := range c.Auth.MasterRoles {
+		if !modeTokenPattern.MatchString(mode) {
+			return fmt.Errorf("auth.master_roles has invalid mode token %q", mode)
+		}
+		if strings.TrimSpace(role) == "" {
+			return fmt.Errorf("auth.master_roles[%q] is blank", mode)
+		}
+		if strings.TrimSpace(c.Auth.CitizenRoles[mode]) == "" {
+			return fmt.Errorf("mode %q is in master_roles but missing from citizen_roles", mode)
+		}
+	}
+	for mode := range c.Auth.CitizenRoles {
+		if strings.TrimSpace(c.Auth.MasterRoles[mode]) == "" {
+			return fmt.Errorf("mode %q is in citizen_roles but missing from master_roles", mode)
 		}
 	}
 	return validateEntra(c.Auth.Entra)

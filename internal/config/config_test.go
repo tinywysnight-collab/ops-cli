@@ -142,9 +142,11 @@ func TestNormalizeMode(t *testing.T) {
 	}{
 		{"admin", "admin", false},
 		{"opr", "opr", false},
-		{"Admin", "", true},
-		{"awsopr", "", true},
+		{"prod-admin", "prod-admin", false},
+		{"Admin", "Admin", false}, // valid token; configured-ness checked elsewhere
 		{"", "", true},
+		{"bad;mode", "", true},
+		{"has space", "", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {

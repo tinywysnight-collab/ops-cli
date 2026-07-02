@@ -90,3 +90,38 @@ func TestValidateRules(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateAcceptsExtraMode(t *testing.T) {
+	c := fullValid()
+	c.Auth.MasterRoles["prod-admin"] = "master_production_admin"
+	c.Auth.CitizenRoles["prod-admin"] = "Admin"
+	require.NoError(t, c.Validate())
+}
+
+func TestValidateRejectsMismatchedRoleKeys(t *testing.T) {
+	c := fullValid()
+	c.Auth.MasterRoles["prod-admin"] = "master_production_admin" // no citizen_roles entry
+	err := c.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "prod-admin")
+}
+
+func TestValidateRequiresAdminAndOpr(t *testing.T) {
+	c := fullValid()
+	delete(c.Auth.MasterRoles, "opr")
+	delete(c.Auth.CitizenRoles, "opr")
+	err := c.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "opr")
+}
+
+func TestNormalizeModeAcceptsConfiguredToken(t *testing.T) {
+	got, err := config.NormalizeMode("prod-admin")
+	require.NoError(t, err)
+	require.Equal(t, "prod-admin", got)
+}
+
+func TestNormalizeModeRejectsUnsafeToken(t *testing.T) {
+	_, err := config.NormalizeMode("bad;mode")
+	require.Error(t, err)
+}
