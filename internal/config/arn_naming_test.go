@@ -54,11 +54,18 @@ func TestProfileNaming(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "master_awsopr", opr)
 
-	_, err = config.MasterProfile("nope")
+	// "nope" is a well-formed token, not a configured mode: MasterProfile only
+	// validates format (NormalizeMode), so it falls back to master_<mode>.
+	// Whether "nope" is actually configured is enforced by Validate/*RoleARN.
+	nope, err := config.MasterProfile("nope")
+	require.NoError(t, err)
+	require.Equal(t, "master_nope", nope)
+
+	_, err = config.MasterProfile("has.dot")
 	require.Error(t, err)
 
-	require.Equal(t, "dev.admin", config.CitizenProfile("dev", "admin"))
-	require.Equal(t, "prod.opr", config.CitizenProfile("prod", "opr"))
+	require.Equal(t, "dev.admin.Admin", config.CitizenProfile("dev", "admin", "Admin"))
+	require.Equal(t, "prod.opr.BAU", config.CitizenProfile("prod", "opr", "BAU"))
 }
 
 func TestLoadParseError(t *testing.T) {

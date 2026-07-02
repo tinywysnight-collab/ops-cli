@@ -64,7 +64,8 @@ func (s *CitizenService) Use(ctx context.Context, alias, mode string) (string, e
 	if _, ok := s.Cfg.Accounts[alias]; !ok {
 		return "", fmt.Errorf("unknown account alias %q", alias)
 	}
-	profile := config.CitizenProfile(alias, mode)
+	// TODO(later task): thread the effective citizen role instead of "".
+	profile := config.CitizenProfile(alias, mode, "")
 
 	mu := citizenProfileLock(profile)
 	mu.Lock()
