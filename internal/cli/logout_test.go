@@ -95,3 +95,14 @@ func TestRunLogoutPurgesCredentialsAndState(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(data), "[legacy]")
 }
+
+func TestLogoutAllRemovesExtraModeProfiles(t *testing.T) {
+	entries := map[string]state.Entry{
+		"dev.prod-admin.Admin": {Account: "dev", Mode: "prod-admin"},
+		"master_prod-admin":    {Account: "master", Mode: "prod-admin"},
+	}
+	got, err := logoutProfiles("admin", true, entries)
+	require.NoError(t, err)
+	require.Contains(t, got, "dev.prod-admin.Admin")
+	require.Contains(t, got, "master_prod-admin")
+}

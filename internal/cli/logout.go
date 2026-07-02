@@ -105,6 +105,9 @@ func logoutProfiles(mode string, all bool, entries map[string]state.Entry) ([]st
 	return out, nil
 }
 
+// isOpsxManagedEntry reports whether a state entry is opsx-managed. state.json
+// holds only opsx's own entries and opsx always records a Mode, so any entry
+// with a non-empty Mode is ours (covers admin, opr, and any configured mode).
 func isOpsxManagedEntry(entry state.Entry) bool {
-	return entry.Mode == config.ModeAdmin || entry.Mode == config.ModeOpr
+	return entry.Mode != ""
 }
