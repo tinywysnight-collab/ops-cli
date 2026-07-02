@@ -93,7 +93,7 @@ func (s *CitizenService) Use(ctx context.Context, alias, mode string) (string, e
 		return "", err
 	}
 
-	roleARN, err := s.Cfg.CitizenRoleARN(alias, mode)
+	roleARN, err := s.Cfg.CitizenRoleARN(alias, mode, "")
 	if err != nil {
 		return "", err
 	}

@@ -170,7 +170,7 @@ func TestARNComposition(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "arn:aws:iam::000000000000:role/master_admin", master)
 
-		citizen, err := c.CitizenRoleARN("prod", "opr")
+		citizen, err := c.CitizenRoleARN("prod", "opr", "")
 		require.NoError(t, err)
 		require.Equal(t, "arn:aws:iam::222222222222:role/AWSOpr", citizen)
 	})
@@ -183,13 +183,13 @@ func TestARNComposition(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "arn:aws:iam::000000000000:role/Renamed_Master", master)
 
-		citizen, err := c.CitizenRoleARN("dev", "admin")
+		citizen, err := c.CitizenRoleARN("dev", "admin", "")
 		require.NoError(t, err)
 		require.Equal(t, "arn:aws:iam::111111111111:role/Renamed_Citizen", citizen)
 	})
 
 	t.Run("unknown account alias errors", func(t *testing.T) {
-		_, err := c.CitizenRoleARN("ghost", "admin")
+		_, err := c.CitizenRoleARN("ghost", "admin", "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "ghost")
 	})

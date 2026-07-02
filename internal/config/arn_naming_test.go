@@ -32,15 +32,15 @@ func TestCitizenRoleARNErrors(t *testing.T) {
 		Auth:     config.Auth{CitizenRoles: map[string]string{"admin": "Admin"}},
 	}
 	t.Run("account without account_id", func(t *testing.T) {
-		_, err := base.CitizenRoleARN("dev", "admin")
+		_, err := base.CitizenRoleARN("dev", "admin", "")
 		require.ErrorContains(t, err, "account_id")
 	})
 	t.Run("no citizen role for mode", func(t *testing.T) {
-		_, err := base.CitizenRoleARN("ok", "opr")
+		_, err := base.CitizenRoleARN("ok", "opr", "")
 		require.ErrorContains(t, err, "citizen_roles")
 	})
 	t.Run("invalid mode", func(t *testing.T) {
-		_, err := base.CitizenRoleARN("ok", "nope")
+		_, err := base.CitizenRoleARN("ok", "nope", "")
 		require.Error(t, err)
 	})
 }
