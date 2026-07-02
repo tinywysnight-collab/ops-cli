@@ -32,7 +32,7 @@ type Assignment struct {
 var safeKey = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 
 // posixSafeValue is the strict charset opsx ever emits as an export value: profile
-// names (alias.mode), filesystem paths, and the mode token. It deliberately
+// names (alias.mode.role), filesystem paths, and the mode token. It deliberately
 // excludes every shell metacharacter (whitespace, ; | & $ ` ( ) < > quotes …).
 //
 // "%" is permitted because the per-(cluster,mode) kubeconfig file name

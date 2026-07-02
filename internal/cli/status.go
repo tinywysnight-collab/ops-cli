@@ -44,7 +44,7 @@ func renderStatus(w io.Writer, tc terminalContext, entries map[string]state.Entr
 	// active credentials were actually minted under (the profile name encodes it).
 	// OPSX_MODE is only a per-terminal default for the NEXT command and may
 	// disagree with the active profile (e.g. `opsx use prod --opr` sets
-	// AWS_PROFILE=prod.opr but never touches OPSX_MODE), so it must not override
+	// AWS_PROFILE=prod.opr.AWSOpr but never touches OPSX_MODE), so it must not override
 	// the profile's real mode. It is shown only as a fallback for a profile opsx
 	// has no state for, and is labeled as such.
 	switch {
