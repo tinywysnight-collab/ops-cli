@@ -198,10 +198,9 @@ func (c *Config) validateAuth() error {
 	}
 	// master_roles and citizen_roles must define exactly the same modes, must
 	// include admin (default) and opr (--opr shorthand), and every mode token
-	// must be shell-safe. Additional modes (e.g. prod-admin) are allowed.
-	if len(c.Auth.MasterRoles) == 0 {
-		return fmt.Errorf("auth.master_roles is empty")
-	}
+	// must be shell-safe. Additional modes (e.g. prod-admin) are allowed. A
+	// nil/empty master_roles map falls through to the supportedModes loop below,
+	// which returns the specific "missing required mode" error.
 	for _, mode := range supportedModes {
 		if strings.TrimSpace(c.Auth.MasterRoles[mode]) == "" {
 			return fmt.Errorf("auth.master_roles is missing required mode %q", mode)

@@ -74,6 +74,16 @@ func TestValidateRules(t *testing.T) {
 		{"missing citizen role for admin", func(c *config.Config) { delete(c.Auth.CitizenRoles, "admin") }, "citizen_roles"},
 		{"blank master role", func(c *config.Config) { c.Auth.MasterRoles["admin"] = " " }, "master_roles"},
 		{"blank citizen role", func(c *config.Config) { c.Auth.CitizenRoles["opr"] = " " }, "citizen_roles"},
+		{"citizen mode missing from master", func(c *config.Config) {
+			c.Auth.CitizenRoles["prod-admin"] = "Admin" // no master_roles entry
+		}, "prod-admin"},
+		{"master mode with invalid token charset", func(c *config.Config) {
+			c.Auth.MasterRoles["bad;mode"] = "x"
+		}, "invalid mode token"},
+		{"blank master role for extra mode", func(c *config.Config) {
+			c.Auth.MasterRoles["prod-admin"] = " "
+			c.Auth.CitizenRoles["prod-admin"] = "Admin"
+		}, "prod-admin"},
 		{"blank entra app", func(c *config.Config) { c.Auth.Entra.AppID = " " }, "app_id"},
 		{"blank entra username", func(c *config.Config) { c.Auth.Entra.Username = " " }, "username"},
 		{"blank entra base url", func(c *config.Config) { c.Auth.Entra.BaseURL = " " }, "base_url"},
