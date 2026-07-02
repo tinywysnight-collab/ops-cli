@@ -79,7 +79,9 @@ func TestLoginCachesMasterThroughSeam(t *testing.T) {
 	require.NoError(t, svc.Login(context.Background(), "admin"))
 
 	// Auth went through the seam for the admin role.
-	require.Equal(t, []auth.MasterRole{auth.RoleAdmin}, prov.calls)
+	adminRole, err := auth.MasterRoleFromMode("admin")
+	require.NoError(t, err)
+	require.Equal(t, []auth.MasterRole{adminRole}, prov.calls)
 	// AssumeRoleWithSAML used the assertion + composed master ARN + principal.
 	require.Equal(t, "ASSERTION", aws.ToString(sts.gotInput.SAMLAssertion))
 	require.Equal(t, "arn:aws:iam::000000000000:role/master_admin", aws.ToString(sts.gotInput.RoleArn))

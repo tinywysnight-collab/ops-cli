@@ -128,7 +128,9 @@ func TestFetchAssertionRunsEntraADFSMFAFlow(t *testing.T) {
 	var stderr bytes.Buffer
 	provider.Stderr = &stderr
 
-	got, err := provider.FetchAssertion(context.Background(), RoleAdmin)
+	role, err := MasterRoleFromMode("admin")
+	require.NoError(t, err)
+	got, err := provider.FetchAssertion(context.Background(), role)
 
 	require.NoError(t, err)
 	require.Equal(t, "ASSERTION-FROM-MFA", got)
@@ -177,7 +179,9 @@ func TestFetchAssertionRequiresTopLevelAppID(t *testing.T) {
 		Entra: config.Entra{Username: "operator@example.com"},
 	})
 
-	_, err := provider.FetchAssertion(context.Background(), RoleAdmin)
+	role, err := MasterRoleFromMode("admin")
+	require.NoError(t, err)
+	_, err = provider.FetchAssertion(context.Background(), role)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "auth.entra.app_id")

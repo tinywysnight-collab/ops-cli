@@ -14,7 +14,9 @@ import (
 func TestEntraProviderReturnsProvidedSAMLAssertionFromEnv(t *testing.T) {
 	t.Setenv(auth.EnvSAMLAssertion, "  ASSERTION-FROM-ENV\n")
 
-	got, err := auth.NewEntraSAMLProvider(testConfig().Auth).FetchAssertion(context.Background(), auth.RoleAdmin)
+	role, err := auth.MasterRoleFromMode("admin")
+	require.NoError(t, err)
+	got, err := auth.NewEntraSAMLProvider(testConfig().Auth).FetchAssertion(context.Background(), role)
 
 	require.NoError(t, err)
 	require.Equal(t, "ASSERTION-FROM-ENV", got)
@@ -25,7 +27,9 @@ func TestEntraProviderReturnsProvidedSAMLAssertionFromFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("\nASSERTION-FROM-FILE\n"), 0o600))
 	t.Setenv(auth.EnvSAMLAssertionFile, path)
 
-	got, err := auth.NewEntraSAMLProvider(testConfig().Auth).FetchAssertion(context.Background(), auth.RoleOpr)
+	role, err := auth.MasterRoleFromMode("opr")
+	require.NoError(t, err)
+	got, err := auth.NewEntraSAMLProvider(testConfig().Auth).FetchAssertion(context.Background(), role)
 
 	require.NoError(t, err)
 	require.Equal(t, "ASSERTION-FROM-FILE", got)
@@ -52,7 +56,9 @@ func TestEntraProviderRequiresConfiguredUsernameWithoutProvidedAssertion(t *test
 				require.NoError(t, os.Unsetenv(auth.EnvSAMLAssertionFile))
 			}
 
-			_, err := auth.NewEntraSAMLProvider(testConfig().Auth).FetchAssertion(context.Background(), auth.RoleAdmin)
+			role, err := auth.MasterRoleFromMode("admin")
+			require.NoError(t, err)
+			_, err = auth.NewEntraSAMLProvider(testConfig().Auth).FetchAssertion(context.Background(), role)
 
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "username")
