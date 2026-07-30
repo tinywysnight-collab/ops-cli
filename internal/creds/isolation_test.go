@@ -20,9 +20,10 @@ func TestCrossTerminalNoCollision(t *testing.T) {
 	cs, ss := newCitizenStores(t)
 
 	cfg := &config.Config{
+		Regions: []string{"us-east-1"},
 		Accounts: map[string]config.Account{
-			"dev":  {AccountID: "111111111111"},
-			"prod": {AccountID: "222222222222"},
+			"dev":  {AccountID: "111111111111", Region: "us-east-1"},
+			"prod": {AccountID: "222222222222", Region: "us-east-1"},
 		},
 		Auth: config.Auth{
 			MasterAccountID: "000000000000",

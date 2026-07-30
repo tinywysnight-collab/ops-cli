@@ -90,11 +90,15 @@ cp testdata/config.example.yaml ~/.config/opsx/config.yaml
 ```
 
 ```yaml
+regions:                     # required allowlist; interactive menus preserve this order
+  - ap-southeast-2
+  - us-east-1
+  - us-west-2
 accounts:
   dev:
     account_id: "111111111111"
     description: "Dev citizen account"
-    region: ap-southeast-2   # optional: this account's STS/home region for `opsx use`
+    region: ap-southeast-2   # required account STS/home region
 clusters:
   dev-syd:
     account: dev
@@ -115,12 +119,15 @@ auth:
     opr:   AWSOpr
 ```
 
-**Region resolution** (AWS SDK needs a region to resolve the STS endpoint):
+**Region policy and resolution**:
 
-- `opsx use`: `--region` flag (if given) → `accounts.<alias>.region` → `auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`
+- `regions` is required, ordered, unique, and contains every account/cluster/configured auth region.
+- `accounts.<alias>.region` is required and is used by `opsx use`.
+- `opsx use --region` accepts only values present in `regions`.
 - `opsx login`: `auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`
 - `clusters.<alias>.region` is the EKS region for `update-kubeconfig`, distinct from STS region.
 - `opsx use <alias> --region <region>` overrides the exported session region for that terminal (same account, different region for plain `aws`). `opsx status` then shows that region.
+- `opsx region` interactively switches only this terminal; the next `use`/`kube` restores its resource region.
 
 Optional Entra endpoint overrides (`auth.entra.base_url`, `ms_login_url`, `myapps_url`) default to
 `https://auth.entra.io`. Set `auth.entra.debug: true` for sanitized stderr troubleshooting logs
@@ -134,15 +141,25 @@ Optional Entra endpoint overrides (`auth.entra.base_url`, `ms_login_url`, `myapp
 opsx login                 # Entra + ADFS + MFA → cache master_admin (~1h)
 opsx login --opr           # second master role (master_AWSOpr); both coexist
 opsx mode opr              # set this terminal's default mode (or use --opr per command)
+opsx region                # choose an allowed region for this terminal
 
 opsx use dev               # assume citizen role → AWS_PROFILE=dev.admin (no MFA, < 2s)
 opsx use dev --region us-west-2   # same account, override the session AWS_REGION for plain `aws`
 opsx kube dev-syd          # update kubeconfig → per-terminal KUBECONFIG + merge into ~/.kube/config
 opsx logout                # purge this mode's opsx-managed cached credentials/state
 
-opsx ls                    # list configured account & cluster aliases
+opsx account add           # interactively add an account
+opsx account delete        # delete only when no cluster references it
+opsx cluster add           # interactively add a cluster
+opsx cluster delete        # remove cluster config only
+
+opsx ls                    # detailed account/cluster tables
 opsx status                # show this terminal's account, mode, cluster, and expiry
 ```
+
+Add/delete commands require a TTY, never overwrite existing aliases, and preserve unrelated YAML
+comments/order. Deletion retains credentials, state, kubeconfigs, and terminal variables. Regenerate
+the shell wrapper with `opsx init <shell>` after upgrading so it routes `opsx region`.
 
 Pre-obtained SAML escape hatch (CI / off-network):
 

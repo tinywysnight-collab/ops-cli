@@ -23,8 +23,28 @@ func newShellSwitchCommand() *cobra.Command {
 		newShellSwitchUseCommand(opts),
 		newShellSwitchKubeCommand(opts),
 		newShellSwitchModeCommand(opts),
+		newShellSwitchRegionCommand(opts),
 	)
 	return cmd
+}
+
+func newShellSwitchRegionCommand(opts *shellSwitchOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "region",
+		Short: "Interactively select and emit AWS region assignments",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			region, cancelled, err := selectTerminalRegion(cmd)
+			if err != nil || cancelled {
+				return err
+			}
+			dialect, err := opts.parseDialect()
+			if err != nil {
+				return err
+			}
+			return printAssignments(cmd, dialect, regionAssignments(region))
+		},
+	}
 }
 
 type shellSwitchOptions struct {
@@ -119,6 +139,13 @@ func newShellSwitchModeCommand(opts *shellSwitchOptions) *cobra.Command {
 func profileRegionAssignments(profile, region string) []shell.Assignment {
 	return []shell.Assignment{
 		{Key: "AWS_PROFILE", Value: profile},
+		{Key: "AWS_REGION", Value: region},
+		{Key: "AWS_DEFAULT_REGION", Value: region},
+	}
+}
+
+func regionAssignments(region string) []shell.Assignment {
+	return []shell.Assignment{
 		{Key: "AWS_REGION", Value: region},
 		{Key: "AWS_DEFAULT_REGION", Value: region},
 	}

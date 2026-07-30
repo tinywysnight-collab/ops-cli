@@ -11,13 +11,18 @@ import (
 )
 
 const validYAML = `
+regions:
+  - ap-southeast-2
+  - us-east-1
 accounts:
   dev:
     account_id: "111111111111"
     description: "Dev citizen account"
+    region: ap-southeast-2
   prod:
     account_id: "222222222222"
     description: "Prod citizen account"
+    region: us-east-1
 clusters:
   dev-syd:
     account: dev
@@ -55,6 +60,7 @@ func TestLoad(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, c.Validate())
 
+		require.Equal(t, []string{"ap-southeast-2", "us-east-1"}, c.Regions)
 		require.Equal(t, "111111111111", c.Accounts["dev"].AccountID)
 		require.Equal(t, "Dev citizen account", c.Accounts["dev"].Description)
 		require.Equal(t, "ap-southeast-2", c.Clusters["dev-syd"].Region)
@@ -112,9 +118,11 @@ func TestExampleConfig(t *testing.T) {
 func TestValidate(t *testing.T) {
 	t.Run("cluster referencing unknown account is rejected", func(t *testing.T) {
 		body := `
+regions: [ap-southeast-2]
 accounts:
   dev:
     account_id: "111111111111"
+    region: ap-southeast-2
 clusters:
   ghost:
     account: missing

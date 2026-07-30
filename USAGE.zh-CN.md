@@ -86,11 +86,15 @@ cp testdata/config.example.yaml ~/.config/opsx/config.yaml
 ```
 
 ```yaml
+regions:                     # 必填白名单；交互菜单保留此顺序
+  - ap-southeast-2
+  - us-east-1
+  - us-west-2
 accounts:
   dev:
     account_id: "111111111111"
     description: "Dev citizen account"
-    region: ap-southeast-2   # 可选：该账号用于 `opsx use` 的 STS/home 区域
+    region: ap-southeast-2   # 必填：该账号的 STS/home 区域
 clusters:
   dev-syd:
     account: dev
@@ -111,12 +115,15 @@ auth:
     opr:   AWSOpr
 ```
 
-**区域解析顺序**（AWS SDK 需要区域来解析 STS 端点）：
+**区域策略与解析**：
 
-- `opsx use`：`--region` flag（若给出）→ `accounts.<别名>.region` → `auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`
+- `regions` 必填、非空、有序且不得重复；所有账号、集群和已配置的 auth region 都必须在白名单中。
+- `accounts.<别名>.region` 必填，并用于 `opsx use`。
+- `opsx use --region` 只接受 `regions` 中的值。
 - `opsx login`：`auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`
 - `clusters.<别名>.region` 是 `update-kubeconfig` 的 EKS 区域，与 STS 区域相互独立。
 - `opsx use <别名> --region <区域>` 覆盖该终端导出的会话区域（同账号、跑纯 `aws` 打不同 region）。之后 `opsx status` 会显示该区域。
+- `opsx region` 只切换当前终端；下一次 `use`/`kube` 会恢复对应资源配置的 region。
 
 可选的 Entra 端点覆盖（`auth.entra.base_url`、`ms_login_url`、`myapps_url`）默认为
 `https://auth.entra.io`。设置 `auth.entra.debug: true` 可输出脱敏的 stderr 排障日志（绝不记录任何密钥）。
@@ -129,15 +136,25 @@ auth:
 opsx login                 # Entra + ADFS + MFA → 缓存 master_admin（约 1 小时）
 opsx login --opr           # 第二个 master 角色（master_AWSOpr）；两者共存
 opsx mode opr              # 设置本终端默认模式（或对每条命令用 --opr）
+opsx region                # 交互式选择本终端允许使用的 region
 
 opsx use dev               # assume citizen 角色 → AWS_PROFILE=dev.admin（无 MFA，< 2s）
 opsx use dev --region us-west-2   # 同账号，覆盖会话 AWS_REGION，用于跑纯 `aws`
 opsx kube dev-syd          # 更新 kubeconfig → 每终端 KUBECONFIG + 合并进 ~/.kube/config
 opsx logout                # 清除本模式下 opsx 管理的缓存凭证/状态
 
-opsx ls                    # 列出已配置的账号与集群别名
+opsx account add           # 交互式添加账号
+opsx account delete        # 仅删除未被集群引用的账号
+opsx cluster add           # 交互式添加集群
+opsx cluster delete        # 仅删除集群配置
+
+opsx ls                    # 显示账号/集群详细表格
 opsx status                # 显示本终端的账号、模式、集群与过期时间
 ```
+
+增删命令只支持 TTY 交互，绝不覆盖已有别名，并尽量保留无关 YAML 注释与顺序。删除配置不会清理
+credentials、state、kubeconfig 或任何终端环境。升级后请重新运行 `opsx init <shell>` 替换旧
+wrapper，使 `opsx region` 能修改当前终端。
 
 预获取 SAML 的备用入口（CI / 离线网络）：
 

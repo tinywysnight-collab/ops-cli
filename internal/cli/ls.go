@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -12,36 +13,37 @@ import (
 
 // renderLs writes configured accounts and clusters to w. Empty sections print a
 // friendly "none configured" line rather than nothing.
-func renderLs(w io.Writer, cfg *config.Config) {
+func renderLs(w io.Writer, cfg *config.Config) error {
 	fmt.Fprintln(w, "Accounts:")
 	if len(cfg.Accounts) == 0 {
 		fmt.Fprintln(w, "  (none configured)")
 	} else {
+		table := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(table, "ALIAS\tACCOUNT ID\tREGION\tDESCRIPTION")
 		for _, alias := range sortedKeys(accountAliases(cfg)) {
 			a := cfg.Accounts[alias]
-			line := "  " + alias
-			if a.Description != "" {
-				line += " — " + a.Description
-			}
-			// Show the account's configured STS/home region alongside its
-			// description. When unset it falls back to auth.region, so it is
-			// omitted here rather than shown as empty.
-			if a.Region != "" {
-				line += fmt.Sprintf(" (region %s)", a.Region)
-			}
-			fmt.Fprintln(w, line)
+			fmt.Fprintf(table, "%s\t%s\t%s\t%s\n", alias, a.AccountID, a.Region, displayOptional(a.Description))
+		}
+		if err := table.Flush(); err != nil {
+			return fmt.Errorf("flush accounts table: %w", err)
 		}
 	}
 
 	fmt.Fprintln(w, "Clusters:")
 	if len(cfg.Clusters) == 0 {
 		fmt.Fprintln(w, "  (none configured)")
-		return
+		return nil
 	}
+	table := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(table, "ALIAS\tACCOUNT\tACCOUNT ID\tREGION\tNAME")
 	for _, alias := range sortedKeys(clusterAliases(cfg)) {
 		c := cfg.Clusters[alias]
-		fmt.Fprintf(w, "  %s — account %s, region %s\n", alias, c.Account, c.Region)
+		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n", alias, c.Account, cfg.Accounts[c.Account].AccountID, c.Region, c.Name)
 	}
+	if err := table.Flush(); err != nil {
+		return fmt.Errorf("flush clusters table: %w", err)
+	}
+	return nil
 }
 
 func accountAliases(cfg *config.Config) []string {
@@ -75,8 +77,7 @@ func newLsCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			renderLs(cmd.OutOrStdout(), cfg)
-			return nil
+			return renderLs(cmd.OutOrStdout(), cfg)
 		},
 	}
 }

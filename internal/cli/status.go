@@ -34,6 +34,9 @@ type terminalContext struct {
 func renderStatus(w io.Writer, tc terminalContext, entries map[string]state.Entry, now time.Time) {
 	if tc.Profile == "" {
 		fmt.Fprintln(w, "No active opsx context in this terminal.")
+		if tc.Region != "" {
+			fmt.Fprintf(w, "Region:         %s\n", tc.Region)
+		}
 		fmt.Fprintln(w, "  Run `opsx login` then `opsx use <account-alias>` to get started.")
 		return
 	}
@@ -123,6 +126,7 @@ func newStatusCommand() *cobra.Command {
 				Profile:    os.Getenv("AWS_PROFILE"),
 				KubeConfig: os.Getenv("KUBECONFIG"),
 				Mode:       os.Getenv(EnvMode),
+				Region:     strings.TrimSpace(os.Getenv("AWS_REGION")),
 			}
 			if cluster, ok := paths.ClusterFromKubeConfig(tc.KubeConfig); ok {
 				tc.Cluster = cluster
@@ -141,9 +145,7 @@ func newStatusCommand() *cobra.Command {
 				// --region` (or any manual override) must be reflected here rather
 				// than the config-derived region. Fall back to config only when the
 				// terminal exported no region.
-				if r := strings.TrimSpace(os.Getenv("AWS_REGION")); r != "" {
-					tc.Region = r
-				} else {
+				if tc.Region == "" {
 					tc.Region = resolveStatusRegion(tc, entries)
 				}
 			}

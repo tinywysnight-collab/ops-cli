@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,22 +15,33 @@ import (
 func TestRenderLs(t *testing.T) {
 	cfg := &config.Config{
 		Accounts: map[string]config.Account{
-			"dev": {AccountID: "1", Description: "Dev citizen account"},
+			"prod": {AccountID: "222222222222", Region: "us-east-1"},
+			"dev":  {AccountID: "111111111111", Description: "Dev citizen account", Region: "ap-southeast-2"},
 		},
 		Clusters: map[string]config.Cluster{
 			"dev-syd": {Account: "dev", Region: "ap-southeast-2", Name: "dev-eks-cluster-01"},
 		},
 	}
 	var b bytes.Buffer
-	renderLs(&b, cfg)
+	require.NoError(t, renderLs(&b, cfg))
 	out := b.String()
-	require.Contains(t, out, "dev — Dev citizen account")
-	require.Contains(t, out, "dev-syd — account dev, region ap-southeast-2")
+	require.Contains(t, out, "ALIAS")
+	require.Contains(t, out, "ACCOUNT ID")
+	require.Contains(t, out, "DESCRIPTION")
+	require.Contains(t, out, "111111111111")
+	require.Contains(t, out, "Dev citizen account")
+	require.Contains(t, out, "222222222222")
+	require.Contains(t, out, "prod")
+	require.Contains(t, out, " -")
+	require.Contains(t, out, "NAME")
+	require.Contains(t, out, "dev-eks-cluster-01")
+	require.Less(t, strings.Index(out, "dev "), strings.Index(out, "prod "))
+	require.NotContains(t, out, "REGIONS")
 }
 
 func TestRenderLsEmptySections(t *testing.T) {
 	var b bytes.Buffer
-	renderLs(&b, &config.Config{})
+	require.NoError(t, renderLs(&b, &config.Config{}))
 	out := b.String()
 	require.Contains(t, out, "Accounts:")
 	require.Contains(t, out, "Clusters:")
@@ -42,6 +54,14 @@ func TestRenderStatusNoContext(t *testing.T) {
 	out := b.String()
 	require.Contains(t, out, "No active opsx context")
 	require.Contains(t, out, "opsx login")
+}
+
+func TestRenderStatusNoProfileWithRegion(t *testing.T) {
+	var b bytes.Buffer
+	renderStatus(&b, terminalContext{Region: "ap-southeast-2"}, map[string]state.Entry{}, time.Now())
+	out := b.String()
+	require.Contains(t, out, "No active opsx")
+	require.Contains(t, out, "Region:         ap-southeast-2")
 }
 
 func TestRenderStatusActive(t *testing.T) {

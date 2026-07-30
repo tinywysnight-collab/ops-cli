@@ -10,9 +10,10 @@ import (
 
 func fullValid() *config.Config {
 	return &config.Config{
+		Regions: []string{"ap-southeast-2", "us-east-1"},
 		Accounts: map[string]config.Account{
-			"dev":  {AccountID: "111111111111", Description: "dev"},
-			"prod": {AccountID: "222222222222"},
+			"dev":  {AccountID: "111111111111", Description: "dev", Region: "ap-southeast-2"},
+			"prod": {AccountID: "222222222222", Region: "us-east-1"},
 		},
 		Clusters: map[string]config.Cluster{
 			"dev-syd": {Account: "dev", Region: "ap-southeast-2", Name: "dev-eks"},
@@ -20,6 +21,7 @@ func fullValid() *config.Config {
 		Auth: config.Auth{
 			MasterAccountID: "000000000000",
 			SAMLProviderARN: "arn:aws:iam::000000000000:saml-provider/EntraID",
+			Region:          "us-east-1",
 			MasterRoles:     map[string]string{"admin": "master_admin", "opr": "master_AWSOpr"},
 			CitizenRoles:    map[string]string{"admin": "Admin", "opr": "AWSOpr"},
 		},
@@ -36,7 +38,17 @@ func TestValidateRules(t *testing.T) {
 		mutate  func(*config.Config)
 		wantSub string
 	}{
+		{"missing regions", func(c *config.Config) { c.Regions = nil }, "regions"},
+		{"duplicate region", func(c *config.Config) {
+			c.Regions = append(c.Regions, "ap-southeast-2")
+		}, "duplicate"},
+		{"whitespace allowlisted region", func(c *config.Config) {
+			c.Regions = []string{"ap southeast 2", "us-east-1"}
+		}, "whitespace"},
 		{"account missing id", func(c *config.Config) { c.Accounts["dev"] = config.Account{} }, "dev"},
+		{"account missing region", func(c *config.Config) {
+			c.Accounts["dev"] = config.Account{AccountID: "111111111111"}
+		}, "region"},
 		{"account malformed id", func(c *config.Config) {
 			c.Accounts["dev"] = config.Account{AccountID: "123"}
 		}, "12 digits"},
@@ -44,11 +56,14 @@ func TestValidateRules(t *testing.T) {
 			c.Accounts["dev"] = config.Account{AccountID: "1234 5678 9012"}
 		}, "dev"},
 		{"duplicate account id", func(c *config.Config) {
-			c.Accounts["prod"] = config.Account{AccountID: "111111111111"}
+			c.Accounts["prod"] = config.Account{AccountID: "111111111111", Region: "us-east-1"}
 		}, "same account_id"},
 		{"hostile account alias", func(c *config.Config) {
-			c.Accounts["dev;rm -rf ~"] = config.Account{AccountID: "999999999999"}
+			c.Accounts["dev;rm -rf ~"] = config.Account{AccountID: "999999999999", Region: "us-east-1"}
 		}, "disallowed characters"},
+		{"account region outside allowlist", func(c *config.Config) {
+			c.Accounts["dev"] = config.Account{AccountID: "111111111111", Region: "eu-west-1"}
+		}, "allowlist"},
 		{"cluster missing region", func(c *config.Config) {
 			c.Clusters["dev-syd"] = config.Cluster{Account: "dev", Name: "x"}
 		}, "region"},
@@ -58,6 +73,9 @@ func TestValidateRules(t *testing.T) {
 		{"cluster whitespace region", func(c *config.Config) {
 			c.Clusters["dev-syd"] = config.Cluster{Account: "dev", Region: "ap southeast 2", Name: "x"}
 		}, "whitespace"},
+		{"cluster region outside allowlist", func(c *config.Config) {
+			c.Clusters["dev-syd"] = config.Cluster{Account: "dev", Region: "eu-west-1", Name: "x"}
+		}, "allowlist"},
 		{"cluster missing name", func(c *config.Config) {
 			c.Clusters["dev-syd"] = config.Cluster{Account: "dev", Region: "r"}
 		}, "name"},
@@ -70,6 +88,7 @@ func TestValidateRules(t *testing.T) {
 		{"missing master account id", func(c *config.Config) { c.Auth.MasterAccountID = "" }, "master_account_id"},
 		{"malformed master account id", func(c *config.Config) { c.Auth.MasterAccountID = "abc" }, "master_account_id"},
 		{"missing saml provider", func(c *config.Config) { c.Auth.SAMLProviderARN = "" }, "saml_provider_arn"},
+		{"auth region outside allowlist", func(c *config.Config) { c.Auth.Region = "eu-west-1" }, "allowlist"},
 		{"missing master role for opr", func(c *config.Config) { delete(c.Auth.MasterRoles, "opr") }, "master_roles"},
 		{"missing citizen role for admin", func(c *config.Config) { delete(c.Auth.CitizenRoles, "admin") }, "citizen_roles"},
 		{"blank master role", func(c *config.Config) { c.Auth.MasterRoles["admin"] = " " }, "master_roles"},

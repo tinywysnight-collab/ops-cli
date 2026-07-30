@@ -5,6 +5,11 @@
 # runtime property (`opsx mode admin|opr` or the --opr flag). One config serves
 # both modes.
 
+regions: # department-approved regions, in interactive menu order
+  - ap-southeast-2
+  - ap-northeast-1
+  - us-east-1
+
 accounts:
   dev: # alias used on the command line
     account_id: "111111111111"
@@ -13,6 +18,7 @@ accounts:
   prod:
     account_id: "222222222222"
     description: "Prod citizen account"
+    region: ap-southeast-2
 
 clusters:
   dev-syd: # cluster alias

@@ -99,6 +99,7 @@ func cmdEnvValue(out, key string) string {
 // dottedAliasConfig binds a cluster alias containing a dot, which is config-valid
 // (aliasPattern allows '.') and exercises the kubeconfig percent-encoding.
 const dottedAliasConfig = `
+regions: [ap-southeast-2, us-east-1]
 accounts:
   dev:
     account_id: "111111111111"
@@ -191,6 +192,7 @@ func TestStatusShowsClusterRegion(t *testing.T) {
 // active, status falls back to the account's resolved STS region.
 func TestStatusShowsAccountRegionWhenNoCluster(t *testing.T) {
 	const cfg = `
+regions: [ap-south-1, ap-southeast-2, us-east-1]
 accounts:
   dev:
     account_id: "111111111111"
@@ -226,6 +228,7 @@ auth:
 // configured region alongside its description.
 func TestLsShowsAccountRegion(t *testing.T) {
 	const cfg = `
+regions: [ap-south-1, ap-southeast-2, us-east-1]
 accounts:
   dev:
     account_id: "111111111111"
@@ -246,8 +249,9 @@ auth:
 	setupFakeEnv(t, cfg)
 	out, _, err := runOutErr(t, "ls")
 	require.NoError(t, err)
-	require.Regexp(t, `dev — Dev \(region ap-south-1\)`, out)
-	require.Contains(t, out, "dev-syd — account dev, region ap-southeast-2")
+	require.Contains(t, out, "111111111111")
+	require.Contains(t, out, "ap-south-1")
+	require.Contains(t, out, "dev-eks-cluster-01")
 }
 
 func TestShellSwitchPowerShellUseKubeAndModeEmitAssignments(t *testing.T) {

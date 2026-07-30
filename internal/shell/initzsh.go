@@ -25,7 +25,8 @@ func InitScript(shell string) (string, error) {
 	}
 }
 
-// zshFunction wraps opsx so that ONLY the switching subcommands (use/kube/mode)
+// zshFunction wraps opsx so that ONLY switching subcommands
+// (use/kube/mode/region)
 // have their export output applied to the current shell via eval; every other
 // subcommand (login, status, ls, init, --help, --version, …) runs directly and
 // behaves exactly as the bare binary. Installed once by appending to the rc file.
@@ -50,7 +51,7 @@ const zshFunction = `opsx() {
   done
 
   case "$_opsx_subcmd" in
-    use|kube|mode)
+    use|kube|mode|region)
       # A help flag makes the switching subcommand print help text to stdout with
       # exit 0. That text is NOT an export line and must never be eval'd, so route
       # any -h/--help invocation straight to the bare binary, which also shows the
@@ -102,7 +103,7 @@ const bashFunction = `opsx() {
   done
 
   case "$_opsx_subcmd" in
-    use|kube|mode)
+    use|kube|mode|region)
       for _opsx_arg in "$@"; do
         case "$_opsx_arg" in
           -h|--help) command opsx "$@"; return $? ;;
@@ -150,7 +151,7 @@ const powerShellFunction = `function opsx {
 
   $opsxExe = (Get-Command opsx -CommandType Application).Source
   switch ($opsxSubcmd) {
-    { $_ -in @("use", "kube", "mode") } {
+    { $_ -in @("use", "kube", "mode", "region") } {
       foreach ($opsxArg in $opsxArgs) {
         if ($opsxArg -eq "-h" -or $opsxArg -eq "--help") {
           & $opsxExe @opsxArgs
@@ -194,7 +195,7 @@ const powerShellFunction = `function opsx {
 // interpreter and its SET commands persist after it returns. Install this as an
 // opsx.cmd that appears on PATH before opsx.exe; the wrapper delegates
 // non-switching commands directly to opsx.exe and applies shell-switch output
-// only for use/kube/mode.
+// only for use/kube/mode/region.
 const cmdWrapper = `@echo off
 if not defined OPSX_EXE set "OPSX_EXE=opsx.exe"
 set "_opsx_subcmd="
@@ -229,7 +230,7 @@ if "%_opsx_arg:~0,2%"=="--" (
 set "_opsx_subcmd=%_opsx_arg%"
 
 :opsx_dispatch
-for %%S in (use kube mode) do if "%_opsx_subcmd%"=="%%S" goto opsx_switch
+for %%S in (use kube mode region) do if "%_opsx_subcmd%"=="%%S" goto opsx_switch
 "%OPSX_EXE%" %_opsx_args%
 exit /b %ERRORLEVEL%
 

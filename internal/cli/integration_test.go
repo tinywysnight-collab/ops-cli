@@ -22,10 +22,15 @@ import (
 )
 
 const integrationConfig = `
+regions:
+  - ap-southeast-2
+  - us-east-1
+  - us-west-2
 accounts:
   dev:
     account_id: "111111111111"
     description: "Dev"
+    region: us-east-1
 clusters:
   dev-syd:
     account: dev

@@ -76,6 +76,7 @@ type Auth struct {
 
 // Config is the full decoded config.yaml.
 type Config struct {
+	Regions  []string           `yaml:"regions"`
 	Accounts map[string]Account `yaml:"accounts"`
 	Clusters map[string]Cluster `yaml:"clusters"`
 	Auth     Auth               `yaml:"auth"`
@@ -92,6 +93,22 @@ func NormalizeMode(s string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid mode %q: must be %q or %q", s, ModeAdmin, ModeOpr)
 	}
+}
+
+// ValidateAlias enforces the shell-safe account/cluster alias syntax.
+func ValidateAlias(alias string) error {
+	if !aliasPattern.MatchString(alias) {
+		return fmt.Errorf("alias %q contains disallowed characters (allowed: letters, digits, '.', '_', '-')", alias)
+	}
+	return nil
+}
+
+// ValidateAccountID enforces the AWS 12-digit account ID shape.
+func ValidateAccountID(accountID string) error {
+	if !accountIDPattern.MatchString(accountID) {
+		return fmt.Errorf("account_id must be exactly 12 digits")
+	}
+	return nil
 }
 
 // Load reads and decodes config.yaml from path. A missing file yields a clear
@@ -119,6 +136,9 @@ func Load(path string) (*Config, error) {
 // cluster→account referential integrity, required auth fields, and mode-keyed
 // role maps for every supported mode.
 func (c *Config) Validate() error {
+	if err := c.validateRegions(); err != nil {
+		return err
+	}
 	if err := c.validateAccounts(); err != nil {
 		return err
 	}
@@ -126,6 +146,38 @@ func (c *Config) Validate() error {
 		return err
 	}
 	return c.validateAuth()
+}
+
+func (c *Config) validateRegions() error {
+	if len(c.Regions) == 0 {
+		return fmt.Errorf("regions must contain at least one allowed region")
+	}
+	seen := make(map[string]struct{}, len(c.Regions))
+	for _, region := range c.Regions {
+		if containsWhitespace(region) {
+			return fmt.Errorf("regions entry %q must not be blank or contain whitespace", region)
+		}
+		if _, ok := seen[region]; ok {
+			return fmt.Errorf("regions contains duplicate region %q", region)
+		}
+		seen[region] = struct{}{}
+	}
+	return nil
+}
+
+func (c *Config) regionAllowed(region string) bool {
+	for _, allowed := range c.Regions {
+		if region == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+// IsRegionAllowed reports whether region is present in the ordered department
+// allowlist.
+func (c *Config) IsRegionAllowed(region string) bool {
+	return c.regionAllowed(region)
 }
 
 func (c *Config) validateAccounts() error {
@@ -143,6 +195,12 @@ func (c *Config) validateAccounts() error {
 		}
 		if acct.Region != "" && containsWhitespace(acct.Region) {
 			return fmt.Errorf("account %q: region must not be blank or contain whitespace", alias)
+		}
+		if acct.Region == "" {
+			return fmt.Errorf("account %q: missing region", alias)
+		}
+		if !c.regionAllowed(acct.Region) {
+			return fmt.Errorf("account %q: region %q is not in the regions allowlist", alias, acct.Region)
 		}
 		if first, dup := seenID[acct.AccountID]; dup {
 			return fmt.Errorf("accounts %q and %q share the same account_id %q", first, alias, acct.AccountID)
@@ -173,6 +231,9 @@ func (c *Config) validateClusters() error {
 		if cl.Name == "" {
 			return fmt.Errorf("cluster %q: missing name", alias)
 		}
+		if !c.regionAllowed(cl.Region) {
+			return fmt.Errorf("cluster %q: region %q is not in the regions allowlist", alias, cl.Region)
+		}
 	}
 	return nil
 }
@@ -189,6 +250,9 @@ func (c *Config) validateAuth() error {
 	}
 	if c.Auth.Region != "" && containsWhitespace(c.Auth.Region) {
 		return fmt.Errorf("auth.region must not be blank or contain whitespace")
+	}
+	if c.Auth.Region != "" && !c.regionAllowed(c.Auth.Region) {
+		return fmt.Errorf("auth.region %q is not in the regions allowlist", c.Auth.Region)
 	}
 	for _, mode := range supportedModes {
 		if strings.TrimSpace(c.Auth.MasterRoles[mode]) == "" {
@@ -267,21 +331,15 @@ func (c *Config) ResolveMasterRegion() (string, error) {
 	return "", fmt.Errorf("no AWS region for the master STS call: set auth.region in config (or AWS_REGION/AWS_DEFAULT_REGION)")
 }
 
-// ResolveCitizenRegion resolves the region for an account's citizen AssumeRole:
-// accounts.<alias>.region → auth.region → AWS_REGION/AWS_DEFAULT_REGION.
+// ResolveCitizenRegion resolves the required region for an account's citizen
+// AssumeRole.
 func (c *Config) ResolveCitizenRegion(alias string) (string, error) {
 	if acct, ok := c.Accounts[alias]; ok {
 		if r := strings.TrimSpace(acct.Region); r != "" {
 			return r, nil
 		}
 	}
-	if r := strings.TrimSpace(c.Auth.Region); r != "" {
-		return r, nil
-	}
-	if r := regionFromEnv(); r != "" {
-		return r, nil
-	}
-	return "", fmt.Errorf("no AWS region for account %q: set accounts.%s.region or auth.region in config (or AWS_REGION/AWS_DEFAULT_REGION)", alias, alias)
+	return "", fmt.Errorf("no AWS region for account %q: set accounts.%s.region in config", alias, alias)
 }
 
 func sortedKeys[V any](m map[string]V) []string {

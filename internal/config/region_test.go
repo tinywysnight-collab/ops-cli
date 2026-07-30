@@ -10,9 +10,10 @@ import (
 
 func regionConfig() *config.Config {
 	return &config.Config{
+		Regions: []string{"ap-southeast-2", "us-east-1", "eu-west-1", "ap-south-1"},
 		Accounts: map[string]config.Account{
 			"dev":  {AccountID: "111111111111", Region: "ap-southeast-2"},
-			"prod": {AccountID: "222222222222"}, // no per-account region
+			"prod": {AccountID: "222222222222", Region: "us-east-1"},
 		},
 		Auth: config.Auth{
 			MasterAccountID: "000000000000",
@@ -71,31 +72,19 @@ func TestResolveCitizenRegion(t *testing.T) {
 		require.Equal(t, "ap-southeast-2", r)
 	})
 
-	t.Run("falls back to auth.region", func(t *testing.T) {
+	t.Run("uses required account region", func(t *testing.T) {
 		t.Setenv("AWS_REGION", "eu-west-1")
 		r, err := regionConfig().ResolveCitizenRegion("prod")
 		require.NoError(t, err)
 		require.Equal(t, "us-east-1", r)
 	})
 
-	t.Run("falls back to env", func(t *testing.T) {
-		t.Setenv("AWS_REGION", "eu-west-1")
+	t.Run("missing account region is rejected", func(t *testing.T) {
 		c := regionConfig()
-		c.Auth.Region = ""
-		r, err := c.ResolveCitizenRegion("prod")
-		require.NoError(t, err)
-		require.Equal(t, "eu-west-1", r)
-	})
-
-	t.Run("no region resolves names the account fields", func(t *testing.T) {
-		t.Setenv("AWS_REGION", "")
-		t.Setenv("AWS_DEFAULT_REGION", "")
-		c := regionConfig()
-		c.Auth.Region = ""
+		c.Accounts["prod"] = config.Account{AccountID: "222222222222"}
 		_, err := c.ResolveCitizenRegion("prod")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "accounts.prod.region")
-		require.Contains(t, err.Error(), "auth.region")
 	})
 }
 

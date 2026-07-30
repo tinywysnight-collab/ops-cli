@@ -29,6 +29,15 @@ func switchAccount(ctx context.Context, alias, mode, regionOverride string) (pro
 	if err != nil {
 		return "", "", err
 	}
+	if r := strings.TrimSpace(regionOverride); r != "" {
+		if !regionOverridePattern.MatchString(r) {
+			return "", "", fmt.Errorf("invalid --region %q: must contain only letters, digits, '.', '_', '-'", regionOverride)
+		}
+		if !cfg.IsRegionAllowed(r) {
+			return "", "", fmt.Errorf("invalid --region %q: allowed regions are %s", r, strings.Join(cfg.Regions, ", "))
+		}
+		region = r
+	}
 	cs, err := credStore()
 	if err != nil {
 		return "", "", err
@@ -42,11 +51,8 @@ func switchAccount(ctx context.Context, alias, mode, regionOverride string) (pro
 	if err != nil {
 		return "", "", err
 	}
-	if r := strings.TrimSpace(regionOverride); r != "" {
-		if !regionOverridePattern.MatchString(r) {
-			return "", "", fmt.Errorf("invalid --region %q: must contain only letters, digits, '.', '_', '-'", regionOverride)
-		}
-		return profile, r, nil
+	if region != "" {
+		return profile, region, nil
 	}
 	region, err = cfg.ResolveCitizenRegion(alias)
 	if err != nil {

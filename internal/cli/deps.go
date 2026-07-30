@@ -23,6 +23,18 @@ func loadConfig() (*config.Config, error) {
 	return c, nil
 }
 
+func configStore() (*config.Store, error) {
+	cp, err := paths.ConfigFile()
+	if err != nil {
+		return nil, err
+	}
+	lp, err := paths.LockFile()
+	if err != nil {
+		return nil, err
+	}
+	return config.NewStore(cp, lp), nil
+}
+
 // credStore returns the credentials store wired to the default paths.
 func credStore() (*creds.Store, error) {
 	cp, err := paths.CredentialsFile()

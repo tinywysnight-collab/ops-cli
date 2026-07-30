@@ -89,11 +89,15 @@ cp testdata/config.example.yaml ~/.config/opsx/config.yaml
 ```
 
 ```yaml
+regions:                     # required department allowlist; menu order is preserved
+  - ap-southeast-2
+  - us-east-1
+  - us-west-2
 accounts:
   dev:
     account_id: "111111111111"
     description: "Dev citizen account"
-    region: ap-southeast-2   # optional: this account's STS/home region for `opsx use`
+    region: ap-southeast-2   # required; this account's STS/home region
 clusters:
   dev-syd:
     account: dev
@@ -117,19 +121,19 @@ auth:
 Mode (`admin` vs `opr`) is **not** stored — it is per-terminal runtime state, so one config
 serves both modes.
 
-**STS region is configuration-driven.** AWS SDK Go v2 needs a region to resolve the STS
-endpoint, so `opsx login`/`opsx use` would otherwise fail on a machine with no `AWS_REGION`
-and no `~/.aws/config` default. Region resolution order is: for `opsx use`,
-`accounts.<alias>.region` → `auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`; for `opsx login`,
-`auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`. If none resolves, the command fails with a
-clear message naming the field to set. `clusters.<alias>.region` is unchanged — it is the EKS
-region passed to `aws eks update-kubeconfig`, distinct from an account's STS/home region.
+**Regions are policy-controlled.** `regions` is required, non-empty, ordered, and unique. Every
+account and cluster region, configured `auth.region`, and `opsx use --region` override must occur
+in this allowlist. Every account now requires its own region; `opsx use` no longer falls back to
+`auth.region` or ambient environment for citizen STS. `opsx login` still resolves
+`auth.region` → `AWS_REGION`/`AWS_DEFAULT_REGION`.
 When the shell integration is installed, `opsx use` also sets `AWS_REGION` and
 `AWS_DEFAULT_REGION` to the account's resolved region for the current terminal. `opsx kube` sets
 them to the active cluster's region, so subsequent `aws` commands in that session do not need a
 manual `--region`. To run plain `aws` against a **different** region of the same account (without
 going through a cluster), pass `opsx use <alias> --region <region>` — it overrides the exported
-session region for that terminal; omit it to keep the account's configured region.
+session region for that terminal; omit it to keep the account's configured region. `opsx region`
+interactively chooses an allowed region for the current terminal only; the next `use` or `kube`
+sets the resource's configured region again.
 
 Optional endpoint override fields `auth.entra.base_url`, `auth.entra.ms_login_url`, and
 `auth.entra.myapps_url` default to `https://auth.entra.io` when omitted. They are intentionally
@@ -150,13 +154,19 @@ export OPSX_SAML_ASSERTION_FILE=/path/to/saml-response.txt
 opsx login                 # optional pre-obtained SAMLResponse escape hatch
 opsx login --opr          # second master role (master_AWSOpr); both coexist
 opsx mode opr             # set this terminal's default mode (or use --opr per command)
+opsx region               # interactively switch this terminal's allowed AWS region
 
 opsx use dev              # assume citizen role → current terminal AWS_PROFILE=dev.admin (no MFA, < 2s)
 opsx default dev          # explicitly copy dev.admin credentials to AWS [default]
 opsx kube dev-syd         # update per-terminal KUBECONFIG and AWS_PROFILE
 opsx logout               # purge this mode's opsx-managed cached credentials/state
 
-opsx ls                   # list configured account & cluster aliases
+opsx account add          # interactively add an account (never overwrites)
+opsx account delete       # delete an unreferenced account
+opsx cluster add          # interactively add a cluster
+opsx cluster delete       # delete a cluster before deleting its account
+
+opsx ls                   # detailed account/cluster tables (IDs, regions, real EKS names)
 opsx status               # show this terminal's account, mode, cluster, and expiry
 ```
 
@@ -173,9 +183,14 @@ opsx login [--opr]`).
 
 ## Shell integration is required for isolation
 
-`opsx use`, `opsx kube`, and `opsx mode` need the installed shell wrapper or a manual
+`opsx use`, `opsx kube`, `opsx mode`, and `opsx region` need the installed shell wrapper or a manual
 `shell-switch` eval so the current terminal receives its own `AWS_PROFILE`, `AWS_REGION`,
 `AWS_DEFAULT_REGION`, `KUBECONFIG`, and `OPSX_MODE` environment variables.
+
+After upgrading from a wrapper generated before `opsx region` existed, rerun `opsx init <shell>`
+and replace the old wrapper. Configuration deletion removes only YAML: cached credentials, state,
+kubeconfig files, and live terminal environments are retained. An account referenced by any
+cluster is rejected with the blocking aliases; delete those clusters explicitly first.
 
 opsx does not write shared latest-wins fallbacks during switches:
 

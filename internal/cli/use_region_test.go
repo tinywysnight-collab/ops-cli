@@ -42,6 +42,17 @@ func TestUseRegionRejectsUnsafe(t *testing.T) {
 	require.Contains(t, err.Error(), "invalid --region")
 }
 
+func TestUseRegionRejectsValueOutsideAllowlist(t *testing.T) {
+	setupFakeEnv(t, integrationConfig)
+	run(t, "login")
+
+	stdout, _, err := runOutErr(t, "shell-switch", "use", "dev", "--region", "eu-central-1")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Contains(t, err.Error(), "eu-central-1")
+	require.Contains(t, err.Error(), "allowed")
+}
+
 // TestStatusPrefersEnvRegion: `opsx status` shows the terminal's actual
 // AWS_REGION as authoritative, so a `--region` override (or any manual
 // AWS_REGION) is reflected rather than the config-derived region.

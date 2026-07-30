@@ -18,7 +18,8 @@ import (
 
 func citizenConfig() *config.Config {
 	return &config.Config{
-		Accounts: map[string]config.Account{"dev": {AccountID: "111111111111"}},
+		Regions:  []string{"us-east-1"},
+		Accounts: map[string]config.Account{"dev": {AccountID: "111111111111", Region: "us-east-1"}},
 		Auth: config.Auth{
 			MasterAccountID: "000000000000",
 			Region:          "us-east-1",
