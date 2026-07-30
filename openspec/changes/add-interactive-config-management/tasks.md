@@ -63,3 +63,11 @@
 - [x] 8.5 Run `golangci-lint run ./...` and resolve every reported issue
 - [x] 8.6 Run `go build ./...`, the production binary build, and supported cross-build targets
 - [x] 8.7 Run `openspec validate add-interactive-config-management --strict` and confirm the implemented behavior matches every delta-spec scenario
+
+## 9. Verification follow-ups
+
+- [x] 9.1 RED: add cross-shell wrapper regression tests proving export-like command substitution and arbitrary cmd output are rejected before evaluation, and confirm the focused tests fail
+- [x] 9.2 GREEN: enforce strict assignment syntax and the supported environment-variable allowlist in zsh, bash, PowerShell, and cmd wrappers
+- [x] 9.3 Add regression coverage for invalid `ls` config, missing/invalid mutation config, and commit-time account-reference protection
+- [x] 9.4 Update stale region comments to describe required account regions and the current resolution rules
+- [x] 9.5 Run formatting, focused/full tests, vet, lint, builds, and strict OpenSpec validation

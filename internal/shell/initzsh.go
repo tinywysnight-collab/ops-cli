@@ -62,14 +62,17 @@ const zshFunction = `opsx() {
         esac
       done
       _opsx_output="$(command opsx shell-switch "$@")" || return $?
-      # Defense-in-depth: only ever eval 'export' lines. Any other stdout (a
-      # future non-export leak) is refused rather than executed as a shell command.
+      # Defense-in-depth: accept only the exact keys and value charset emitted by
+      # opsx. A line that merely starts with "export " may still contain command
+      # substitution, so prefix checking is not sufficient before eval.
       while IFS= read -r _opsx_line; do
         case "$_opsx_line" in
-          ""|export\ *) ;;
+          "") ;;
           *)
-            print -r -- "opsx: refusing to eval unexpected shell-switch output: $_opsx_line" >&2
-            return 1
+            if [[ ! "$_opsx_line" =~ ^export\ (AWS_PROFILE|AWS_REGION|AWS_DEFAULT_REGION|KUBECONFIG|OPSX_MODE)=[A-Za-z0-9%._/@:=+~-]+$ ]]; then
+              print -r -- "opsx: refusing to eval unexpected shell-switch output: $_opsx_line" >&2
+              return 1
+            fi
             ;;
         esac
       done <<< "$_opsx_output"
@@ -112,10 +115,12 @@ const bashFunction = `opsx() {
       _opsx_output="$(command opsx shell-switch "$@")" || return $?
       while IFS= read -r _opsx_line; do
         case "$_opsx_line" in
-          ""|export\ *) ;;
+          "") ;;
           *)
-            printf '%s\n' "opsx: refusing to eval unexpected shell-switch output: $_opsx_line" >&2
-            return 1
+            if [[ ! "$_opsx_line" =~ ^export\ (AWS_PROFILE|AWS_REGION|AWS_DEFAULT_REGION|KUBECONFIG|OPSX_MODE)=[A-Za-z0-9%._/@:=+~-]+$ ]]; then
+              printf '%s\n' "opsx: refusing to eval unexpected shell-switch output: $_opsx_line" >&2
+              return 1
+            fi
             ;;
         esac
       done <<< "$_opsx_output"
@@ -167,7 +172,7 @@ const powerShellFunction = `function opsx {
       }
 
       foreach ($opsxLine in $opsxOutput) {
-        if ($opsxLine -eq "" -or $opsxLine -match '^\$env:[A-Z_][A-Z0-9_]* = "[A-Za-z0-9%._/@:=+~\\-]*"$') {
+        if ($opsxLine -eq "" -or $opsxLine -match '^\$env:(AWS_PROFILE|AWS_REGION|AWS_DEFAULT_REGION|KUBECONFIG|OPSX_MODE) = "[A-Za-z0-9%._/@:=+~\\-]+"$') {
           continue
         }
         Write-Error "opsx: refusing to evaluate unexpected shell-switch output: $opsxLine"
@@ -246,12 +251,35 @@ for %%A in (%_opsx_args%) do (
   )
 )
 set "_opsx_tmp=%TEMP%\opsx-shell-switch-%RANDOM%-%RANDOM%.tmp"
+set "_opsx_invalid=%TEMP%\opsx-shell-switch-%RANDOM%-%RANDOM%.invalid"
 "%OPSX_EXE%" shell-switch --shell cmd %_opsx_args% > "%_opsx_tmp%"
 set "_opsx_status=%ERRORLEVEL%"
 if not "%_opsx_status%"=="0" (
   del "%_opsx_tmp%" >nul 2>nul
   exit /b %_opsx_status%
 )
+findstr /v /r /x ^
+  /c:"set \"AWS_PROFILE=[-A-Za-z0-9%%._/@:=+~\\][-A-Za-z0-9%%._/@:=+~\\]*\"" ^
+  /c:"set \"AWS_REGION=[-A-Za-z0-9%%._/@:=+~\\][-A-Za-z0-9%%._/@:=+~\\]*\"" ^
+  /c:"set \"AWS_DEFAULT_REGION=[-A-Za-z0-9%%._/@:=+~\\][-A-Za-z0-9%%._/@:=+~\\]*\"" ^
+  /c:"set \"KUBECONFIG=[-A-Za-z0-9%%._/@:=+~\\][-A-Za-z0-9%%._/@:=+~\\]*\"" ^
+  /c:"set \"OPSX_MODE=[-A-Za-z0-9%%._/@:=+~\\][-A-Za-z0-9%%._/@:=+~\\]*\"" ^
+  "%_opsx_tmp%" > "%_opsx_invalid%"
+set "_opsx_validation=%ERRORLEVEL%"
+if "%_opsx_validation%"=="0" (
+  type "%_opsx_invalid%" >&2
+  del "%_opsx_invalid%" >nul 2>nul
+  del "%_opsx_tmp%" >nul 2>nul
+  echo opsx: refusing to execute unexpected shell-switch output >&2
+  exit /b 1
+)
+if not "%_opsx_validation%"=="1" (
+  del "%_opsx_invalid%" >nul 2>nul
+  del "%_opsx_tmp%" >nul 2>nul
+  echo opsx: failed to validate shell-switch output >&2
+  exit /b 1
+)
+del "%_opsx_invalid%" >nul 2>nul
 for /f "usebackq delims=" %%L in ("%_opsx_tmp%") do %%L
 set "_opsx_status=%ERRORLEVEL%"
 del "%_opsx_tmp%" >nul 2>nul

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 
@@ -14,6 +15,41 @@ import (
 )
 
 func TestConfigStoreTransactions(t *testing.T) {
+	t.Run("missing config is not created", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.yaml")
+		store := config.NewStore(path, filepath.Join(dir, ".lock"))
+
+		err := store.AddAccount(context.Background(), "qa", config.Account{
+			AccountID: "333333333333",
+			Region:    "us-east-1",
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), path)
+		require.NoFileExists(t, path)
+	})
+
+	t.Run("invalid config is not repaired", func(t *testing.T) {
+		invalid := strings.Replace(validYAML,
+			"regions:\n  - ap-southeast-2\n  - us-east-1",
+			"regions: []",
+			1,
+		)
+		path := writeConfig(t, invalid)
+		before, err := os.ReadFile(path)
+		require.NoError(t, err)
+		store := config.NewStore(path, filepath.Join(filepath.Dir(path), ".lock"))
+
+		err = store.AddAccount(context.Background(), "qa", config.Account{
+			AccountID: "333333333333",
+			Region:    "us-east-1",
+		})
+		require.Error(t, err)
+		after, readErr := os.ReadFile(path)
+		require.NoError(t, readErr)
+		require.Equal(t, before, after)
+	})
+
 	t.Run("concurrent additions merge", func(t *testing.T) {
 		path := writeConfig(t, validYAML)
 		store := config.NewStore(path, filepath.Join(filepath.Dir(path), ".lock"))
@@ -54,6 +90,29 @@ func TestConfigStoreTransactions(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "already exists")
+	})
+
+	t.Run("latest account references are checked inside transaction", func(t *testing.T) {
+		initial := strings.Replace(validYAML,
+			"clusters:\n  dev-syd:\n    account: dev\n    region: ap-southeast-2\n    name: dev-eks-cluster-01",
+			"clusters: {}",
+			1,
+		)
+		path := writeConfig(t, initial)
+		store := config.NewStore(path, filepath.Join(filepath.Dir(path), ".lock"))
+
+		// Simulate another writer adding a cluster after an interactive command
+		// rendered its initial account snapshot but before it committed.
+		require.NoError(t, os.WriteFile(path, []byte(validYAML), 0o600))
+		before, err := os.ReadFile(path)
+		require.NoError(t, err)
+
+		err = store.DeleteAccount(context.Background(), "dev")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "dev-syd")
+		after, readErr := os.ReadFile(path)
+		require.NoError(t, readErr)
+		require.Equal(t, before, after)
 	})
 
 	t.Run("preserves permissions and creates no backup", func(t *testing.T) {

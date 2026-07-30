@@ -37,9 +37,9 @@ const (
 type Account struct {
 	AccountID   string `yaml:"account_id"`
 	Description string `yaml:"description"`
-	// Region is the optional STS/home region for this account's citizen
-	// AssumeRole. An account may run EKS in several regions, so this is distinct
-	// from each cluster's own Region. Falls back to auth.region / env when empty.
+	// Region is the required STS/home region for this account's citizen
+	// AssumeRole. An account may run EKS in several regions, so this remains
+	// distinct from each cluster's own required Region.
 	Region string `yaml:"region"`
 }
 
@@ -66,8 +66,9 @@ type Entra struct {
 type Auth struct {
 	MasterAccountID string `yaml:"master_account_id"`
 	SAMLProviderARN string `yaml:"saml_provider_arn"`
-	// Region is the region used for the master AssumeRoleWithSAML call and the
-	// default for citizen assumes. Falls back to AWS_REGION/AWS_DEFAULT_REGION.
+	// Region is the optional region used for the master AssumeRoleWithSAML call.
+	// Master STS falls back to AWS_REGION/AWS_DEFAULT_REGION when it is unset;
+	// citizen assumes always use the selected account's required region.
 	Region       string            `yaml:"region"`
 	Entra        Entra             `yaml:"entra"`
 	MasterRoles  map[string]string `yaml:"master_roles"`  // mode -> role name

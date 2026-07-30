@@ -320,6 +320,42 @@ printf 'status=%d\n' $?
 	require.Contains(t, string(out), "status=1", "wrapper must report failure when output is not export-only")
 }
 
+func TestInitScriptPOSIXRefusesExportLikeInjection(t *testing.T) {
+	tests := []struct {
+		name  string
+		shell string
+	}{
+		{name: "zsh", shell: "/bin/zsh"},
+		{name: "bash", shell: requireBash(t)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			fakeOpsx := filepath.Join(dir, "opsx")
+			marker := filepath.Join(dir, "pwned")
+			script := `#!/bin/sh
+if [ "$1" = "shell-switch" ]; then
+  printf '%s\n' 'export OPSX_MODE=$(touch ` + marker + `)'
+fi
+`
+			require.NoError(t, os.WriteFile(fakeOpsx, []byte(script), 0o700))
+
+			initScript, err := shell.InitScript(tt.name)
+			require.NoError(t, err)
+
+			cmd := exec.Command(tt.shell, "-c", initScript+`
+PATH="`+dir+`:$PATH"
+opsx region
+printf 'status=%d\n' $?
+`)
+			out, err := cmd.CombinedOutput()
+			require.NoError(t, err)
+			require.NoFileExists(t, marker, "export-like command substitution must never be evaluated")
+			require.Contains(t, string(out), "status=1")
+		})
+	}
+}
+
 func TestInitScriptPowerShellEmitsWrapper(t *testing.T) {
 	got, err := shell.InitScript("powershell")
 	require.NoError(t, err)
@@ -343,6 +379,14 @@ func TestInitScriptCmdEmitsWrapper(t *testing.T) {
 	require.Contains(t, got, "opsx.exe")
 	require.Contains(t, got, "set \"")
 	require.Contains(t, got, "exit /b")
+	require.Contains(t, got, `if "%%~A"=="-h"`)
+	require.Contains(t, got, `if "%%~A"=="--help"`)
+	require.Contains(t, got, `if not "%_opsx_status%"=="0"`)
+	require.Contains(t, got, `exit /b %_opsx_status%`)
+	require.Contains(t, got, "findstr /v /r /x")
+	require.Contains(t, got, "opsx_invalid")
+	require.Less(t, strings.Index(got, `if not "%_opsx_status%"=="0"`), strings.Index(got, "findstr /v /r /x"))
+	require.Less(t, strings.Index(got, "findstr /v /r /x"), strings.Index(got, `for /f "usebackq delims="`))
 }
 
 func TestInitScriptPowerShellRoutesLeadingGlobalFlagsAndPreservesFailure(t *testing.T) {
@@ -441,6 +485,33 @@ Write-Output "status=$LASTEXITCODE"
 	require.NoError(t, err)
 	require.NoFileExists(t, marker, "non-assignment stdout must never be evaluated/executed")
 	require.Contains(t, string(out), "status=1", "wrapper must report failure when output is not assignment-only")
+}
+
+func TestInitScriptPowerShellRefusesUnknownEnvironmentKey(t *testing.T) {
+	pwsh := requirePwsh(t)
+	dir := t.TempDir()
+	fakeOpsx := filepath.Join(dir, "opsx")
+	script := `#!/bin/sh
+if [ "$1" = "shell-switch" ]; then
+  printf '%s\n' '$env:UNEXPECTED = "safe"'
+fi
+`
+	require.NoError(t, os.WriteFile(fakeOpsx, []byte(script), 0o700))
+
+	initScript, err := shell.InitScript("powershell")
+	require.NoError(t, err)
+
+	cmd := exec.Command(pwsh, "-NoProfile", "-Command", initScript+`
+$env:PATH = "`+dir+`" + [IO.Path]::PathSeparator + $env:PATH
+opsx region
+Write-Output "status=$LASTEXITCODE"
+Write-Output "unexpected=$env:UNEXPECTED"
+`)
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err)
+	require.Contains(t, string(out), "status=1")
+	require.Contains(t, string(out), "unexpected=")
+	require.NotContains(t, string(out), "unexpected=safe")
 }
 
 func TestInitScriptUnsupported(t *testing.T) {

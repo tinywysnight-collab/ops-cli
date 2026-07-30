@@ -22,7 +22,7 @@ var regionOverridePattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 // the [<alias>.<mode>] profile, and returns the profile name plus the session
 // region. When regionOverride is non-empty it is validated and used as the
 // session region (the multi-region-per-account case); otherwise the account's
-// config-resolved region is used (accounts.<alias>.region → auth.region → env).
+// required accounts.<alias>.region is used.
 // It performs no MFA — it relies entirely on cached master credentials.
 func switchAccount(ctx context.Context, alias, mode, regionOverride string) (profile, region string, err error) {
 	cfg, err := loadConfig()

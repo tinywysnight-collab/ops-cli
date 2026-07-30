@@ -48,6 +48,20 @@ func TestRenderLsEmptySections(t *testing.T) {
 	require.Equal(t, 2, bytesCount(out, "(none configured)"))
 }
 
+func TestLsRejectsInvalidConfig(t *testing.T) {
+	invalid := strings.Replace(integrationConfig,
+		"regions:\n  - ap-southeast-2\n  - us-east-1\n  - us-west-2",
+		"regions: []",
+		1,
+	)
+	setupFakeEnv(t, invalid)
+
+	stdout, _, err := runOutErr(t, "ls")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "regions")
+	require.Empty(t, stdout)
+}
+
 func TestRenderStatusNoContext(t *testing.T) {
 	var b bytes.Buffer
 	renderStatus(&b, terminalContext{}, map[string]state.Entry{}, time.Now())
