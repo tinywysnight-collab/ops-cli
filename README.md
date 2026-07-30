@@ -151,8 +151,9 @@ opsx login                 # optional pre-obtained SAMLResponse escape hatch
 opsx login --opr          # second master role (master_AWSOpr); both coexist
 opsx mode opr             # set this terminal's default mode (or use --opr per command)
 
-opsx use dev              # assume citizen role → AWS_PROFILE=dev.admin + overwrite [default]  (no MFA, < 2s)
-opsx kube dev-syd         # update kubeconfig → per-terminal KUBECONFIG + merge into ~/.kube/config
+opsx use dev              # assume citizen role → current terminal AWS_PROFILE=dev.admin (no MFA, < 2s)
+opsx default dev          # explicitly copy dev.admin credentials to AWS [default]
+opsx kube dev-syd         # update per-terminal KUBECONFIG and AWS_PROFILE
 opsx logout               # purge this mode's opsx-managed cached credentials/state
 
 opsx ls                   # list configured account & cluster aliases
@@ -170,51 +171,34 @@ opsx login [--opr]`).
 > broad rollout. The login command asks the Entra provider for the SAML assertion before building
 > the AWS STS client, so the password prompt is not delayed by AWS SDK config/credential discovery.
 
-## Default profile (works in any shell, no setup)
+## Shell integration is required for isolation
 
-`opsx use` also overwrites the shared `[default]` profile in `~/.aws/credentials` with the
-freshly-assumed citizen credentials (in addition to `[<alias>.<mode>]`). So even where opsx
-cannot inject `AWS_PROFILE` into your shell — Windows PowerShell under a restrictive
-ExecutionPolicy (where `$PROFILE` and `.ps1` won't run), Command Prompt, or any machine without
-the shell function installed — plain `aws` / `kubectl` still target the account you last switched
-to, via AWS's default-profile fallback. No env var, no `eval`, no `init` required.
+`opsx use`, `opsx kube`, and `opsx mode` need the installed shell wrapper or a manual
+`shell-switch` eval so the current terminal receives its own `AWS_PROFILE`, `AWS_REGION`,
+`AWS_DEFAULT_REGION`, `KUBECONFIG`, and `OPSX_MODE` environment variables.
 
-- `[default]` always reflects your **most recent** `opsx use` (it is a single shared file
-  section), so it does **not** provide per-terminal isolation on its own. Terminals that inject
-  `AWS_PROFILE` via the installed shell function stay isolated through their `[<alias>.<mode>]`
-  profiles — that path is unchanged.
-- opsx treats `[default]` as opsx-managed and overwrites it unconditionally. If you keep your own
-  long-term credentials in `[default]`, move them to a named profile first.
-- `opsx logout` clears `[default]` too.
+opsx does not write shared latest-wins fallbacks during switches:
 
-The same idea applies to clusters. Every `opsx kube <alias>` also merges the cluster into the
-default kubeconfig at `~/.kube/config` (via `aws eks update-kubeconfig`, which carries
-`--profile <alias>.<mode>` in the generated exec block) and sets it as `current-context`. The
-context is named by the cluster's **real EKS name** (`clusters.<alias>.name`), not the friendly
-opsx alias. So `kubectl` targets the cluster — and authenticates as the cluster's account — with
-**no** `KUBECONFIG`, shell function, or `eval`, covering locked-down PowerShell / Command Prompt.
-The merge is unconditional (opsx is a local single-user tool; no flag, no config toggle).
+- `opsx use` writes `[<alias>.<mode>]` only. It does not overwrite `[default]`.
+- `opsx kube` writes the per-`(cluster,mode)` kubeconfig only. It does not merge into
+  `~/.kube/config` or change its `current-context`.
+- `opsx logout` still clears `[default]` as compatibility cleanup for older opsx versions that may
+  have written it.
 
-- `~/.kube/config` always reflects your **most recent** `opsx kube` across all terminals, so it
-  provides **no** per-terminal isolation on its own. Terminals that inject `KUBECONFIG` via the
-  installed shell function stay isolated through their per-`(cluster,mode)` files — that path is
-  unchanged, and `KUBECONFIG` takes precedence over `~/.kube/config`, so the merge is purely additive.
-- The context name (the real EKS cluster name) is **not** globally unique: two clusters sharing a
-  real name across accounts/regions collapse to one context here, latest-switch-wins. The
-  per-`(cluster,mode)` `KUBECONFIG` (keyed by alias+mode) remains collision-free for isolation.
-- The AWS CLI's own merge preserves your unrelated `clusters` / `contexts` / `users` entries; opsx
-  passes no destructive flag and creates `~/.kube` if it does not exist.
-- `opsx logout` does **not** edit `~/.kube/config` (editing structured kubeconfig YAML is out of
-  scope), consistent with logout already not deleting per-cluster kubeconfig files.
+When you intentionally want plain `aws` commands in a shell with no `AWS_PROFILE`, run
+`opsx default <account-alias>`. It copies the selected `[<alias>.<mode>]` credentials into the
+shared `[default]` profile as an explicit latest-wins action.
+
+Without shell integration, a child `opsx` process can print confirmations but cannot mutate the
+parent shell. In that case plain `aws`, `kubectl`, and `helm` will keep using whatever environment
+or default files they already had.
 
 ## How isolation works
 
 - Citizen creds are written as standard `[<alias>.<mode>]` profiles in `~/.aws/credentials`;
   each terminal exports its own `AWS_PROFILE`, so accounts never collide.
 - Each cluster gets its own `~/.config/opsx/kube/<mode>/<encoded-cluster>.yaml`; each terminal exports
-  its own `KUBECONFIG`, so contexts never collide. `opsx kube` additionally merges the cluster into
-  the shared `~/.kube/config` (latest-switch-wins, no isolation there) so `kubectl` works even with
-  no `KUBECONFIG` set.
+  its own `KUBECONFIG`, so contexts never collide.
 - All writes to `~/.aws/credentials` and `~/.config/opsx/state.json` are guarded by a `gofrs/flock`
   advisory lock, so concurrent terminals can't corrupt them.
 - Reads are lock-free but see whole-file atomic snapshots. Cross-file consistency is bounded by
@@ -224,8 +208,7 @@ The merge is unconditional (opsx is a local single-user tool; no flag, no config
   weaker or surprising lock semantics, so the multi-terminal guarantee is scoped to local storage.
 
 For different Entra users in different terminals, use separate opsx/AWS storage roots per session:
-set `OPSX_CONFIG_DIR`, `OPSX_CREDENTIALS_FILE`, and, when needed, `OPSX_DEFAULT_KUBECONFIG`
-before running `opsx login`. A shared credentials file is account/mode-isolated, not user-isolated:
+set `OPSX_CONFIG_DIR` and `OPSX_CREDENTIALS_FILE` before running `opsx login`. A shared credentials file is account/mode-isolated, not user-isolated:
 profiles such as `[master_admin]` and `[dev.admin]` are intentionally stable names and would be
 overwritten by another user using the same storage files.
 

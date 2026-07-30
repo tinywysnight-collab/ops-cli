@@ -18,7 +18,6 @@ import (
 	"github.com/tinywysnight-collab/ops-cli/internal/config"
 	"github.com/tinywysnight-collab/ops-cli/internal/creds"
 	"github.com/tinywysnight-collab/ops-cli/internal/kube"
-	"github.com/tinywysnight-collab/ops-cli/internal/paths"
 	"github.com/tinywysnight-collab/ops-cli/internal/state"
 )
 
@@ -182,6 +181,34 @@ func TestIntegrationLoginUseKubeStatus(t *testing.T) {
 	require.NotContains(t, statusOut, "EXPIRED")
 }
 
+func TestIntegrationDefaultCommandWritesDefaultProfile(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "opsx")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(integrationConfig), 0o600))
+	t.Setenv("OPSX_CONFIG_DIR", cfgDir)
+	t.Setenv("OPSX_CREDENTIALS_FILE", filepath.Join(dir, "aws", "credentials"))
+
+	now := time.Now()
+	samlProviderFactory = func(config.Auth) auth.SAMLProvider { return fakeProvider{} }
+	masterAssumeFactory = func(context.Context, string) (auth.AssumeWithSAMLAPI, error) {
+		return fakeMasterSTS{exp: now.Add(time.Hour)}, nil
+	}
+	citizenAssumer = func(_ context.Context, _ creds.Credentials, _, _, _ string) (creds.Credentials, time.Time, error) {
+		return creds.Credentials{AccessKeyID: "CITIZENAK", SecretAccessKey: "CITIZENSK", SessionToken: "CITIZENST"}, now.Add(time.Hour), nil
+	}
+
+	run(t, "login")
+	run(t, "default", "dev")
+
+	cred := filepath.Join(dir, "aws", "credentials")
+	data, err := os.ReadFile(cred)
+	require.NoError(t, err)
+	require.Contains(t, string(data), "[dev.admin]")
+	require.Contains(t, string(data), "[default]")
+	require.Contains(t, string(data), "CITIZENAK")
+}
+
 // TestIntegrationBareKubeSetsProfileAndStatus asserts that `opsx kube` with no
 // prior `opsx use` exports AWS_PROFILE (not only KUBECONFIG) and that `opsx
 // status` then shows the account, cluster, and a non-expired expiry (13.2/13.3).
@@ -250,11 +277,7 @@ func TestIntegrationBareKubeSetsProfileAndStatus(t *testing.T) {
 	require.NotContains(t, statusOut, "EXPIRED")
 }
 
-// TestIntegrationKubeMergesDefaultKubeconfig asserts `opsx kube` runs
-// update-kubeconfig twice: the per-(cluster,mode) file write (unchanged, no
-// friendly alias) and an additive merge into the default ~/.kube/config that
-// carries --alias <cluster> and --profile <alias.mode> (20.2/20.3).
-func TestIntegrationKubeMergesDefaultKubeconfig(t *testing.T) {
+func TestIntegrationKubeDoesNotMergeDefaultKubeconfig(t *testing.T) {
 	dir := t.TempDir()
 	cfgDir := filepath.Join(dir, "opsx")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o700))
@@ -262,13 +285,9 @@ func TestIntegrationKubeMergesDefaultKubeconfig(t *testing.T) {
 	t.Setenv("OPSX_CONFIG_DIR", cfgDir)
 	t.Setenv("OPSX_CREDENTIALS_FILE", filepath.Join(dir, "aws", "credentials"))
 
-	// Redirect the default kubeconfig at a temp path that already holds the
-	// user's unrelated context, to prove the merge is additive (20.3): opsx
-	// itself must never truncate or remove this file.
 	defaultKube := filepath.Join(dir, "dotkube", "config")
 	require.NoError(t, os.MkdirAll(filepath.Dir(defaultKube), 0o700))
 	require.NoError(t, os.WriteFile(defaultKube, []byte("unrelated-user-context\n"), 0o600))
-	t.Setenv(paths.EnvDefaultKubeConfig, defaultKube)
 
 	now := time.Now()
 	samlProviderFactory = func(config.Auth) auth.SAMLProvider { return fakeProvider{} }
@@ -285,10 +304,8 @@ func TestIntegrationKubeMergesDefaultKubeconfig(t *testing.T) {
 			Exec: func(_ context.Context, _ []string, _ string, args ...string) error {
 				calls = append(calls, append([]string(nil), args...))
 				for i, a := range args {
-					if a == "--kubeconfig" && args[i+1] != defaultKube {
-						// Simulate aws writing the per-cluster file. The default
-						// file is left untouched here so the assertion below proves
-						// opsx's own code never clobbered the user's contexts.
+					if a == "--kubeconfig" {
+						require.NotEqual(t, defaultKube, args[i+1], "kube must not write shared default kubeconfig")
 						require.NoError(t, os.MkdirAll(filepath.Dir(args[i+1]), 0o700))
 						require.NoError(t, os.WriteFile(args[i+1], []byte("kind: Config\n"), 0o600))
 					}
@@ -301,41 +318,11 @@ func TestIntegrationKubeMergesDefaultKubeconfig(t *testing.T) {
 	run(t, "login")
 	run(t, "shell-switch", "kube", "dev-syd")
 
-	require.Len(t, calls, 2, "kube must run update-kubeconfig twice: per-cluster + default merge")
+	require.Len(t, calls, 1, "kube must only write the per-terminal kubeconfig by default")
+	require.NotContains(t, calls[0], "--alias")
+	require.Contains(t, calls[0], "--profile")
+	require.Contains(t, calls[0], "dev.admin")
 
-	var perCluster, defaultMerge []string
-	for _, args := range calls {
-		for i, a := range args {
-			if a == "--kubeconfig" {
-				if args[i+1] == defaultKube {
-					defaultMerge = args
-				} else {
-					perCluster = args
-				}
-			}
-		}
-	}
-	require.NotNil(t, perCluster, "expected a per-cluster update-kubeconfig")
-	require.NotNil(t, defaultMerge, "expected a default-kubeconfig merge")
-
-	// Per-cluster write is unchanged: no friendly alias.
-	require.NotContains(t, perCluster, "--alias")
-
-	// Default merge names the context by the REAL EKS cluster name (as
-	// current-context), not the friendly opsx alias, and carries the profile.
-	require.Contains(t, defaultMerge, "--alias")
-	for i, a := range defaultMerge {
-		if a == "--alias" {
-			require.Equal(t, "dev-eks-cluster-01", defaultMerge[i+1],
-				"default merge context must be the real cluster name, not the friendly alias")
-		}
-	}
-	require.NotContains(t, defaultMerge, "dev-syd",
-		"the friendly opsx alias must not appear in the default merge args")
-	require.Contains(t, defaultMerge, "--profile")
-	require.Contains(t, defaultMerge, "dev.admin")
-
-	// Additive: opsx itself never rewrote/removed the unrelated default file.
 	data, err := os.ReadFile(defaultKube)
 	require.NoError(t, err)
 	require.Contains(t, string(data), "unrelated-user-context")

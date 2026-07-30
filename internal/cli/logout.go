@@ -66,7 +66,8 @@ func logoutProfiles(mode string, all bool, entries map[string]state.Entry) ([]st
 		return nil, err
 	}
 	targets := map[string]struct{}{}
-	// `opsx use` overwrites the shared [default] profile, so logout clears it too.
+	// Older opsx versions wrote the shared [default] profile; keep clearing it
+	// as compatibility cleanup even though switches no longer write it.
 	targets[creds.DefaultProfile] = struct{}{}
 	addMaster := func(m string) error {
 		p, err := config.MasterProfile(m)

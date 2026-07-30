@@ -44,10 +44,10 @@ func TestUpdateKubeconfigInvokesAWS(t *testing.T) {
 	require.Contains(t, gotEnv, "AWS_PROFILE=dev.admin")
 }
 
-// TestUpdateKubeconfigDefaultMerge covers the default-kubeconfig merge: a
-// friendly --alias <cluster> is added so the AWS CLI sets that context name as
+// TestUpdateKubeconfigAliasOption covers the optional --alias argument: when an
+// explicit caller supplies one, the AWS CLI sets that context name as
 // current-context, while --profile keeps the exec block self-authenticating.
-func TestUpdateKubeconfigDefaultMerge(t *testing.T) {
+func TestUpdateKubeconfigAliasOption(t *testing.T) {
 	var gotArgs []string
 	// Point at a not-yet-existing ~/.kube so we also prove the dir is created
 	// (a missing ~/.kube must not make the merge fail — task 20.3).
@@ -73,8 +73,7 @@ func TestUpdateKubeconfigDefaultMerge(t *testing.T) {
 		"--profile", "dev.admin",
 		"--alias", "dev-syd",
 	}, gotArgs)
-	// The merge is additive: the AWS CLI merges by default, so no destructive
-	// flag may be passed (it would clobber the user's unrelated contexts).
+	// No destructive flag may be passed.
 	require.NotContains(t, gotArgs, "--dry-run")
 }
 

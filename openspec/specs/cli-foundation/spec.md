@@ -19,7 +19,7 @@ The system SHALL build as a single static Go binary named `opsx` with `CGO_ENABL
 - **THEN** a version string is printed
 
 ### Requirement: Cobra root and subcommand skeleton
-The system SHALL expose a Cobra root command listing the planned subcommands (`login`, `use`, `kube`, `mode`, `status`, `ls`, `init`, `shell-switch`).
+The system SHALL expose a Cobra root command listing the planned subcommands (`login`, `use`, `default`, `kube`, `mode`, `status`, `ls`, `init`, `shell-switch`).
 
 #### Scenario: Help lists subcommands
 - **WHEN** `opsx` runs with no arguments

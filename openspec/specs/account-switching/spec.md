@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Switch between AWS citizen accounts by short alias for the current terminal's mode using cached master credentials, with per-terminal isolation, credential reuse within the validity window, and an opsx-managed `[default]` profile for shells where environment injection is not possible.
+Switch between AWS citizen accounts by short alias for the current terminal's mode using cached master credentials, with per-terminal isolation and credential reuse within the validity window.
 
 ## Requirements
 
@@ -92,20 +92,27 @@ The system SHALL scope `AWS_PROFILE` to each terminal so that two terminals usin
 - **THEN** each exports its own `AWS_PROFILE`
 - **AND** the two never collide (validated by a deliberate cross-terminal test)
 
-### Requirement: Default-profile overwrite
-The system SHALL, on every `opsx use <alias>`, additionally write the freshly-assumed citizen credentials into the shared `[default]` profile of `~/.aws/credentials`, in addition to the per-`[<alias>.<mode>]` profile. This makes `aws`/`kubectl` pick up the active account through the AWS default-profile fallback with no `AWS_PROFILE`, shell function, or `eval` — so opsx works in shells where it cannot inject environment variables (Windows PowerShell under a restrictive ExecutionPolicy, Command Prompt). opsx is a local, single-user tool, so the `[default]` profile is treated as opsx-managed and overwritten unconditionally; there is no opt-in flag or config toggle.
+### Requirement: Shared default profile is not a switch target
+The system SHALL NOT write the shared `[default]` profile during `opsx use`. `[default]` is a single latest-wins section in the AWS credentials file and therefore cannot support multi-terminal isolation. Current-terminal switching MUST happen through shell integration that exports `AWS_PROFILE`.
 
-Because `[default]` is a single shared file section, it always reflects the most recent `opsx use` across all terminals and does not by itself provide per-terminal isolation. Terminals that DO inject `AWS_PROFILE` (via the installed shell function) remain isolated through their distinct `[<alias>.<mode>]` profiles; the `[default]` write is an additive convenience that does not change that path. `opsx logout` SHALL also clear the `[default]` profile.
+The system SHALL provide `opsx default <account-alias>` as an explicit opt-in command that ensures the selected citizen profile for the current mode, then copies that profile's STS credentials into `[default]`. This command is intentionally latest-wins and is for shells or tools that do not consume `AWS_PROFILE`.
 
-#### Scenario: use writes both the named profile and default
+For compatibility with older opsx versions that may have written `[default]`, `opsx logout` SHALL continue to clear `[default]` along with other opsx-managed profiles.
+
+#### Scenario: use writes only the named profile
 - **WHEN** `opsx use dev` runs
-- **THEN** both `[dev.<mode>]` and `[default]` are written with the same freshly-assumed citizen credentials
-- **AND** `aws` with no `AWS_PROFILE` set uses the `[default]` credentials for `dev`
+- **THEN** `[dev.<mode>]` is written with the freshly-assumed citizen credentials
+- **AND** `[default]` is not written or rewritten
 
-#### Scenario: default reflects the latest use
-- **WHEN** `opsx use dev` then `opsx use prod` run in succession
-- **THEN** `[default]` holds the `prod` credentials after the second switch
+#### Scenario: default is preserved on cache reuse
+- **WHEN** `[dev.<mode>]` is reused from cache and `[default]` already contains unrelated credentials
+- **THEN** `[default]` remains unchanged
+
+#### Scenario: default command writes default explicitly
+- **WHEN** `opsx default dev` runs
+- **THEN** `[dev.<mode>]` is ensured
+- **AND** `[default]` is written with the `[dev.<mode>]` credentials
 
 #### Scenario: logout clears default
 - **WHEN** `opsx logout` runs
-- **THEN** the `[default]` profile is removed along with the other purged opsx-managed profiles
+- **THEN** the `[default]` profile is removed as compatibility cleanup along with the other purged opsx-managed profiles

@@ -75,10 +75,7 @@ func TestUseAssumesCitizenAndWritesProfile(t *testing.T) {
 	require.True(t, now.Add(time.Hour).Equal(entry.Expiry))
 }
 
-// TestUseAlsoWritesDefaultProfile asserts that `opsx use` mirrors the assumed
-// citizen credentials into the shared [default] profile (single-user escape
-// hatch for shells where AWS_PROFILE cannot be injected).
-func TestUseAlsoWritesDefaultProfile(t *testing.T) {
+func TestUseDoesNotWriteDefaultProfile(t *testing.T) {
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	cs, ss := newCitizenStores(t)
 	seedMaster(t, cs, ss, now)
@@ -92,17 +89,12 @@ func TestUseAlsoWritesDefaultProfile(t *testing.T) {
 	_, err := svc.Use(context.Background(), "dev", "admin")
 	require.NoError(t, err)
 
-	def, ok, err := cs.Read("default")
+	_, ok, err := cs.Read("default")
 	require.NoError(t, err)
-	require.True(t, ok, "[default] must be written on use")
-	require.Equal(t, "CITIZEN", def.AccessKeyID)
-	require.Equal(t, "ct", def.SessionToken)
+	require.False(t, ok, "[default] is shared across terminals and must not be written by default")
 }
 
-// TestUseRewritesDefaultOnReuse asserts that even when the citizen profile is
-// reused (no fresh AssumeRole), [default] is refreshed to point at this account
-// so it always reflects the latest `opsx use`.
-func TestUseRewritesDefaultOnReuse(t *testing.T) {
+func TestUseDoesNotRewriteDefaultOnReuse(t *testing.T) {
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	cs, ss := newCitizenStores(t)
 	seedMaster(t, cs, ss, now)
@@ -117,7 +109,8 @@ func TestUseRewritesDefaultOnReuse(t *testing.T) {
 
 	_, err := svc.Use(context.Background(), "dev", "admin")
 	require.NoError(t, err)
-	// Simulate another account having claimed [default] since the first use.
+	// Simulate the user's own default profile. A cache reuse must not repoint
+	// this shared profile and break another terminal.
 	require.NoError(t, cs.Write(context.Background(), "default", creds.Credentials{AccessKeyID: "OTHER", SecretAccessKey: "x", SessionToken: "y"}))
 
 	_, err = svc.Use(context.Background(), "dev", "admin")
@@ -127,7 +120,7 @@ func TestUseRewritesDefaultOnReuse(t *testing.T) {
 	def, ok, err := cs.Read("default")
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, "CITIZEN", def.AccessKeyID, "[default] must be refreshed even on cache reuse")
+	require.Equal(t, "OTHER", def.AccessKeyID, "[default] must remain untouched on cache reuse")
 }
 
 // TestUsePassesConfiguredRegionToAssume asserts the per-account region resolved
