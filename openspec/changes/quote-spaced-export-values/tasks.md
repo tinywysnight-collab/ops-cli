@@ -1,0 +1,3 @@
+- [x] RED: spaced KUBECONFIG emitted quoted in POSIX/PowerShell/cmd; spaced AWS_PROFILE and quote-containing values still rejected
+- [x] GREEN: spacedPathSafeValue charsets (strict + space, KUBECONFIG only) and quoted emission; four wrapper guards extended with the quoted alternative
+- [x] Full gates and strict validation

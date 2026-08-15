@@ -537,3 +537,28 @@ func requireBash(t *testing.T) string {
 	}
 	return bash
 }
+
+func TestEmitAssignmentsQuotedSpacedKubeconfig(t *testing.T) {
+	spaced := `C:\Users\John Smith\.config\opsx\kube\admin\dev%2Esyd.yaml`
+	cases := []struct {
+		dialect shell.Dialect
+		want    string
+	}{
+		{shell.DialectPOSIX, `export KUBECONFIG='C:/Users/John Smith/.config/opsx/kube/admin/dev%2Esyd.yaml'`},
+		{shell.DialectPowerShell, `$env:KUBECONFIG = 'C:\Users\John Smith\.config\opsx\kube\admin\dev%2Esyd.yaml'`},
+		{shell.DialectCmd, `set "KUBECONFIG=C:\Users\John Smith\.config\opsx\kube\admin\dev%2Esyd.yaml"`},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.dialect), func(t *testing.T) {
+			lines, err := shell.EmitAssignments(tc.dialect, []shell.Assignment{{Key: "KUBECONFIG", Value: spaced}})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, lines[0])
+		})
+	}
+	// Non-path keys stay strict: a spaced profile is a mistake, not a path.
+	_, err := shell.EmitAssignments(shell.DialectPOSIX, []shell.Assignment{{Key: "AWS_PROFILE", Value: "dev admin"}})
+	require.Error(t, err)
+	// A quote inside the value can never be emitted, spaced or not.
+	_, err = shell.EmitAssignments(shell.DialectPOSIX, []shell.Assignment{{Key: "KUBECONFIG", Value: `C:\Users\J"ohn S\.yaml`}})
+	require.Error(t, err)
+}

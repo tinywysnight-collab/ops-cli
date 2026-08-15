@@ -55,6 +55,22 @@ var powerShellSafeValue = regexp.MustCompile(`^[A-Za-z0-9%._/@:=+~\\-]+$`)
 // |, <, >, quotes, whitespace, and command substitution are rejected outright.
 var cmdSafeValue = regexp.MustCompile(`^[A-Za-z0-9%._/@:=+~\\-]+$`)
 
+// spacedPathSafeValue is the one relaxation of the strict charsets: real
+// filesystem paths (Windows user directories) legitimately contain spaces.
+// It adds ONLY the space character — quotes and every other metacharacter
+// stay rejected — and because the charset still excludes the single quote,
+// wrapping the value in single quotes needs no escaping rule at all. Only
+// KUBECONFIG (the one opsx-constructed path value) may use it; profile and
+// mode tokens stay under the strict charsets.
+var (
+	spacedPosixSafeValue      = regexp.MustCompile(`^[A-Za-z0-9%._/@:=+~ -]+$`)
+	spacedPowerShellSafeValue = regexp.MustCompile(`^[A-Za-z0-9%._/@:=+~\\ -]+$`)
+	spacedCmdSafeValue        = regexp.MustCompile(`^[A-Za-z0-9%._/@:=+~\\ -]+$`)
+)
+
+// spacedPathKey reports whether key may carry a space-containing path value.
+func spacedPathKey(key string) bool { return key == "KUBECONFIG" }
+
 // ParseDialect resolves a user-facing dialect token. Empty defaults to POSIX to
 // preserve existing zsh/manual-eval behavior.
 func ParseDialect(name string) (Dialect, error) {
@@ -108,16 +124,35 @@ func emitAssignment(dialect Dialect, update Assignment) (string, error) {
 		// rejecting the path. opsx only ever emits paths, profile names, and the
 		// mode token as POSIX values, so no legitimate value loses meaning here.
 		value := strings.ReplaceAll(update.Value, `\`, "/")
+		if spacedPathKey(update.Key) && strings.Contains(value, " ") {
+			if !spacedPosixSafeValue.MatchString(value) {
+				return "", fmt.Errorf("refusing to export unsafe value for %s: %q contains shell metacharacters", update.Key, value)
+			}
+			// The charset forbids single quotes, so this quoting is escape-free.
+			return fmt.Sprintf("export %s='%s'", update.Key, value), nil
+		}
 		if !posixSafeValue.MatchString(value) {
 			return "", fmt.Errorf("refusing to export unsafe value for %s: %q contains shell metacharacters", update.Key, value)
 		}
 		return fmt.Sprintf("export %s=%s", update.Key, value), nil
 	case DialectPowerShell:
+		if spacedPathKey(update.Key) && strings.Contains(update.Value, " ") {
+			if !spacedPowerShellSafeValue.MatchString(update.Value) {
+				return "", fmt.Errorf("refusing to emit unsafe PowerShell value for %s: %q contains shell metacharacters", update.Key, update.Value)
+			}
+			return fmt.Sprintf(`$env:%s = '%s'`, update.Key, update.Value), nil
+		}
 		if !powerShellSafeValue.MatchString(update.Value) {
 			return "", fmt.Errorf("refusing to emit unsafe PowerShell value for %s: %q contains shell metacharacters", update.Key, update.Value)
 		}
 		return fmt.Sprintf(`$env:%s = "%s"`, update.Key, update.Value), nil
 	case DialectCmd:
+		if spacedPathKey(update.Key) && strings.Contains(update.Value, " ") {
+			if !spacedCmdSafeValue.MatchString(update.Value) {
+				return "", fmt.Errorf("refusing to emit unsafe cmd value for %s: %q contains shell metacharacters", update.Key, update.Value)
+			}
+			return fmt.Sprintf(`set "%s=%s"`, update.Key, update.Value), nil
+		}
 		if !cmdSafeValue.MatchString(update.Value) {
 			return "", fmt.Errorf("refusing to emit unsafe cmd value for %s: %q contains shell metacharacters", update.Key, update.Value)
 		}

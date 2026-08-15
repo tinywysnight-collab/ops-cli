@@ -69,7 +69,7 @@ const zshFunction = `opsx() {
         case "$_opsx_line" in
           "") ;;
           *)
-            if [[ ! "$_opsx_line" =~ ^export\ (AWS_PROFILE|AWS_REGION|AWS_DEFAULT_REGION|KUBECONFIG|OPSX_MODE)=[A-Za-z0-9%._/@:=+~-]+$ ]]; then
+            if [[ ! "$_opsx_line" =~ ^export\ (AWS_PROFILE|AWS_REGION|AWS_DEFAULT_REGION|KUBECONFIG|OPSX_MODE)=([A-Za-z0-9%._/@:=+~-]+|'[A-Za-z0-9%._/@:=+~ -]+')$ ]]; then
               print -r -- "opsx: refusing to eval unexpected shell-switch output: $_opsx_line" >&2
               return 1
             fi
@@ -117,7 +117,7 @@ const bashFunction = `opsx() {
         case "$_opsx_line" in
           "") ;;
           *)
-            if [[ ! "$_opsx_line" =~ ^export\ (AWS_PROFILE|AWS_REGION|AWS_DEFAULT_REGION|KUBECONFIG|OPSX_MODE)=[A-Za-z0-9%._/@:=+~-]+$ ]]; then
+            if [[ ! "$_opsx_line" =~ ^export\ (AWS_PROFILE|AWS_REGION|AWS_DEFAULT_REGION|KUBECONFIG|OPSX_MODE)=([A-Za-z0-9%._/@:=+~-]+|'[A-Za-z0-9%._/@:=+~ -]+')$ ]]; then
               printf '%s\n' "opsx: refusing to eval unexpected shell-switch output: $_opsx_line" >&2
               return 1
             fi
@@ -172,7 +172,7 @@ const powerShellFunction = `function opsx {
       }
 
       foreach ($opsxLine in $opsxOutput) {
-        if ($opsxLine -eq "" -or $opsxLine -match '^\$env:(AWS_PROFILE|AWS_REGION|AWS_DEFAULT_REGION|KUBECONFIG|OPSX_MODE) = "[A-Za-z0-9%._/@:=+~\\-]+"$') {
+        if ($opsxLine -eq "" -or $opsxLine -match '^(\$env:(AWS_PROFILE|AWS_REGION|AWS_DEFAULT_REGION|KUBECONFIG|OPSX_MODE) = "[A-Za-z0-9%._/@:=+~\\-]+"|\$env:KUBECONFIG = '[A-Za-z0-9%._/@:=+~\\ -]+')$') {
           continue
         }
         Write-Error "opsx: refusing to evaluate unexpected shell-switch output: $opsxLine"
@@ -259,11 +259,11 @@ if not "%_opsx_status%"=="0" (
   exit /b %_opsx_status%
 )
 findstr /v /r /x ^
-  /c:"set \"AWS_PROFILE=[-A-Za-z0-9%%._/@:=+~\\][-A-Za-z0-9%%._/@:=+~\\]*\"" ^
-  /c:"set \"AWS_REGION=[-A-Za-z0-9%%._/@:=+~\\][-A-Za-z0-9%%._/@:=+~\\]*\"" ^
-  /c:"set \"AWS_DEFAULT_REGION=[-A-Za-z0-9%%._/@:=+~\\][-A-Za-z0-9%%._/@:=+~\\]*\"" ^
-  /c:"set \"KUBECONFIG=[-A-Za-z0-9%%._/@:=+~\\][-A-Za-z0-9%%._/@:=+~\\]*\"" ^
-  /c:"set \"OPSX_MODE=[-A-Za-z0-9%%._/@:=+~\\][-A-Za-z0-9%%._/@:=+~\\]*\"" ^
+  /c:"set \"AWS_PROFILE=[-A-Za-z0-9%%._/@:=+~\\ ][-A-Za-z0-9%%._/@:=+~\\ ]*\"" ^
+  /c:"set \"AWS_REGION=[-A-Za-z0-9%%._/@:=+~\\ ][-A-Za-z0-9%%._/@:=+~\\ ]*\"" ^
+  /c:"set \"AWS_DEFAULT_REGION=[-A-Za-z0-9%%._/@:=+~\\ ][-A-Za-z0-9%%._/@:=+~\\ ]*\"" ^
+  /c:"set \"KUBECONFIG=[-A-Za-z0-9%%._/@:=+~\\ ][-A-Za-z0-9%%._/@:=+~\\ ]*\"" ^
+  /c:"set \"OPSX_MODE=[-A-Za-z0-9%%._/@:=+~\\ ][-A-Za-z0-9%%._/@:=+~\\ ]*\"" ^
   "%_opsx_tmp%" > "%_opsx_invalid%"
 set "_opsx_validation=%ERRORLEVEL%"
 if "%_opsx_validation%"=="0" (
