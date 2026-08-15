@@ -7,13 +7,21 @@
 #    archive merges, never direct hand-edits (the lesson from ccbcfdc, which
 #    flipped three Requirements with no change record).
 #
-# Usage: spec-gate.sh [base-ref] [head-ref]
+# Usage: spec-gate.sh [--staged] [base-ref] [head-ref]
+#   --staged  check the staged (index) diff instead of a commit range; used by
+#             the pre-commit hook
 #   base defaults to HEAD~1 locally, or origin/$GITHUB_BASE_REF in pull_request
 #   events; head defaults to HEAD. When the base ref does not exist (first
 #   commit of a branch), the range check is skipped after validation.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+staged=0
+if [ "${1:-}" = "--staged" ]; then
+	staged=1
+	shift
+fi
 
 OPENSPEC_BIN="${OPENSPEC_BIN:-openspec}"
 if ! command -v "$OPENSPEC_BIN" >/dev/null 2>&1; then
@@ -23,21 +31,25 @@ fi
 
 "$OPENSPEC_BIN" validate --all --strict --no-interactive
 
-head_ref="${2:-HEAD}"
-if [ $# -ge 1 ]; then
-	base_ref="$1"
-elif [ -n "${GITHUB_BASE_REF:-}" ]; then
-	base_ref="origin/${GITHUB_BASE_REF}"
+if [ "$staged" -eq 1 ]; then
+	changed=$(git diff --cached --name-only)
 else
-	base_ref="HEAD~1"
-fi
+	head_ref="${2:-HEAD}"
+	if [ $# -ge 1 ]; then
+		base_ref="$1"
+	elif [ -n "${GITHUB_BASE_REF:-}" ]; then
+		base_ref="origin/${GITHUB_BASE_REF}"
+	else
+		base_ref="HEAD~1"
+	fi
 
-if ! git rev-parse --verify --quiet "$base_ref" >/dev/null; then
-	echo "spec-gate: base ref ${base_ref} not found; skipping range check" >&2
-	exit 0
-fi
+	if ! git rev-parse --verify --quiet "$base_ref" >/dev/null; then
+		echo "spec-gate: base ref ${base_ref} not found; skipping range check" >&2
+		exit 0
+	fi
 
-changed=$(git diff --name-only "$base_ref" "$head_ref")
+	changed=$(git diff --name-only "$base_ref" "$head_ref")
+fi
 spec_changes=$(printf '%s\n' "$changed" | grep '^openspec/specs/' || true)
 change_changes=$(printf '%s\n' "$changed" | grep '^openspec/changes/' || true)
 

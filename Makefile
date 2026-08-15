@@ -40,6 +40,12 @@ tidy:
 spec:
 	./scripts/spec-gate.sh
 
+# One-time per clone: use the repo-managed git hooks (.githooks) that run the
+# spec gate on commit (staged diff) and on push (full range).
+.PHONY: hooks
+hooks:
+	git config core.hooksPath .githooks
+
 .PHONY: clean
 clean:
 	rm -rf $(BIN_DIR)

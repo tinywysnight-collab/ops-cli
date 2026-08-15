@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Spec governance on push: strict openspec validation plus the range check
+# over everything being pushed (remote tip..HEAD), catching commits that
+# bypassed the pre-commit hook via --no-verify.
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+
+# git feeds one "<local-ref> <local-sha> <remote-ref> <remote-sha>" line per
+# pushed ref. Use the first non-zero remote sha as the range base; an all-zero
+# remote sha means the branch is new, so fall back to the script's default.
+base=""
+while read -r _local_ref _local_sha _remote_ref remote_sha; do
+	if [ -z "$base" ] && [ "$remote_sha" != "0000000000000000000000000000000000000000" ]; then
+		base="$remote_sha"
+	fi
+done
+
+if [ -n "$base" ]; then
+	exec "$root/scripts/spec-gate.sh" "$base" HEAD
+fi
+exec "$root/scripts/spec-gate.sh"

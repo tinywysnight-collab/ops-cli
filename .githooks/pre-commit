@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Spec governance on commit: strict openspec validation plus rejection of
+# staged canonical-spec edits that lack a matching openspec/changes/ movement.
+# Escape hatch for WIP: git commit --no-verify (the pre-push hook re-checks).
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+exec "$root/scripts/spec-gate.sh" --staged

@@ -72,4 +72,7 @@ golangci-lint run ./...
 
 # Spec governance gate (strict openspec validation + no direct canonical-spec edits)
 make spec
+
+# One-time per clone: enable the repo-managed git hooks (.githooks) running the spec gate
+make hooks
 ```
