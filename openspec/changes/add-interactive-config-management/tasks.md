@@ -71,3 +71,13 @@
 - [x] 9.3 Add regression coverage for invalid `ls` config, missing/invalid mutation config, and commit-time account-reference protection
 - [x] 9.4 Update stale region comments to describe required account regions and the current resolution rules
 - [x] 9.5 Run formatting, focused/full tests, vet, lint, builds, and strict OpenSpec validation
+
+## 10. Code-review follow-ups (full-repository review)
+
+- [x] 10.1 RED/GREEN: reject cluster aliases that differ only by letter case at validation time (`validateClusters` case-fold uniqueness), preventing silent kubeconfig file sharing on case-insensitive filesystems; add the matching config-delta scenario
+- [x] 10.2 RED/GREEN: make interactive prompts context-aware so Ctrl-C (SIGINT, not a literal `\x03` byte on a cooked TTY) cancels a pending prompt instead of hanging; the login password prompt observes the same context, and an empty `OPSX_PASSWORD` no longer counts as set (empty values fall through to the prompt)
+- [x] 10.3 Fix the stale "optional" region comment in `testdata/config.example.yaml` (residue from 9.4)
+- [x] 10.4 Satisfy the credential-store single-flight scenario across processes: the citizen miss path (reuse re-check, AssumeRole, credentials write, state write) now runs in ONE shared advisory lock window, so two opsx processes switching to the same profile issue at most one AssumeRole and both files commit atomically together
+- [x] 10.5 Verify the cmd-wrapper percent-expansion review finding against authoritative cmd semantics: for-variable substitution does NOT re-run percent expansion, so `%` in emitted values is safe; document in the generated wrapper why lines must keep executing via `for /f ... do %%L` and never via direct execution of the temp file
+- [x] 10.6 Move the directly imported `aws-sdk-go-v2/credentials` module into the direct require block (`go mod tidy`)
+- [x] 10.7 Re-run gofmt, vet, golangci-lint, `go test -race -cover ./...`, production and cross builds, and strict OpenSpec validation

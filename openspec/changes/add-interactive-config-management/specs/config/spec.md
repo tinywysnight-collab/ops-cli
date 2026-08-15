@@ -17,7 +17,7 @@ The system SHALL load `~/.config/opsx/config.yaml` and decode its ordered `regio
 - **THEN** a clear error tells the user the expected path and to create it
 
 ### Requirement: Up-front structural validation
-The system SHALL validate the full config at load time, failing with name-bearing errors rather than surfacing scattered failures later. Validation MUST cover: a non-empty ordered `regions` sequence with no duplicates; non-empty `account_id` and `region` for each account; non-empty account reference, `region`, and `name` for each cluster; membership of every account and cluster region and optional `auth.region` in the allowlist; presence of `auth.master_account_id` and `auth.saml_provider_arn`; mode-keyed `master_roles`/`citizen_roles` entries for the supported modes; and rejection of duplicate `account_id` values across accounts.
+The system SHALL validate the full config at load time, failing with name-bearing errors rather than surfacing scattered failures later. Validation MUST cover: a non-empty ordered `regions` sequence with no duplicates; non-empty `account_id` and `region` for each account; non-empty account reference, `region`, and `name` for each cluster; membership of every account and cluster region and optional `auth.region` in the allowlist; presence of `auth.master_account_id` and `auth.saml_provider_arn`; mode-keyed `master_roles`/`citizen_roles` entries for the supported modes; rejection of duplicate `account_id` values across accounts; and case-insensitive uniqueness of cluster aliases, because per-cluster kubeconfig file names collide on case-insensitive filesystems (default APFS and NTFS) when two aliases differ only by letter case.
 
 Validation MUST additionally enforce well-formedness of values interpolated into ARNs and external commands:
 - every `account_id` in account entries and `auth.master_account_id` MUST be exactly 12 ASCII digits;
@@ -49,6 +49,10 @@ Validation MUST additionally enforce well-formedness of values interpolated into
 #### Scenario: Cluster missing region or name
 - **WHEN** a cluster entry has an empty `region` or `name`
 - **THEN** validation fails at load naming the offending cluster alias and missing field
+
+#### Scenario: Case-variant cluster aliases are rejected
+- **WHEN** two cluster aliases differ only by letter case, for example `dev-syd` and `DEV-SYD`
+- **THEN** validation fails at load naming both aliases and the kubeconfig file-name collision on case-insensitive filesystems
 
 #### Scenario: Whitespace region rejected
 - **WHEN** an allowed, account, cluster, or configured auth region is blank or contains whitespace, for example `" "` or `"ap southeast 2"`
