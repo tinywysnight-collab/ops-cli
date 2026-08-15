@@ -280,6 +280,12 @@ if not "%_opsx_validation%"=="1" (
   exit /b 1
 )
 del "%_opsx_invalid%" >nul 2>nul
+rem Execute validated lines via for-variable substitution only: it does NOT
+rem re-run percent expansion on the substituted text, so values containing %
+rem (percent-encoded kubeconfig names) stay literal. Never switch this to
+rem direct execution of the temp file (for example via call) — running it as
+rem a batch would percent-expand every line (batch arguments, %VAR% pairs)
+rem and corrupt or inject values.
 for /f "usebackq delims=" %%L in ("%_opsx_tmp%") do %%L
 set "_opsx_status=%ERRORLEVEL%"
 del "%_opsx_tmp%" >nul 2>nul
