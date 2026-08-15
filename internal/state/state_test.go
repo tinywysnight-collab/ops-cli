@@ -124,3 +124,15 @@ func TestStatePermissions(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o700), di.Mode().Perm())
 }
+
+func TestLoadTreatsJSONNullAsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "state.json")
+	require.NoError(t, os.WriteFile(p, []byte("null"), 0o600))
+	s := state.NewStore(p, filepath.Join(dir, ".opsx.lock"))
+	m, err := s.Load()
+	require.NoError(t, err)
+	require.NotNil(t, m, "JSON null must not yield a nil map")
+	// The nil-map panic this guards against happened on the next Put.
+	require.NoError(t, s.Put(context.Background(), "dev.admin", state.Entry{Mode: "admin"}))
+}

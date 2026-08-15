@@ -29,14 +29,17 @@ func switchAccount(ctx context.Context, alias, mode, regionOverride string) (pro
 	if err != nil {
 		return "", "", err
 	}
-	if r := strings.TrimSpace(regionOverride); r != "" {
-		if !regionOverridePattern.MatchString(r) {
-			return "", "", fmt.Errorf("invalid --region %q: must contain only letters, digits, '.', '_', '-'", regionOverride)
+	// Whitespace is rejected outright rather than trimmed: the spec forbids
+	// whitespace in region tokens, and a padded value signals a scripting
+	// mistake that should surface instead of silently succeeding.
+	if regionOverride != "" {
+		if !regionOverridePattern.MatchString(regionOverride) {
+			return "", "", fmt.Errorf("invalid --region %q: must contain only letters, digits, '.', '_', '-' (no whitespace or padding)", regionOverride)
 		}
-		if !cfg.IsRegionAllowed(r) {
-			return "", "", fmt.Errorf("invalid --region %q: allowed regions are %s", r, strings.Join(cfg.Regions, ", "))
+		if !cfg.IsRegionAllowed(regionOverride) {
+			return "", "", fmt.Errorf("invalid --region %q: allowed regions are %s", regionOverride, strings.Join(cfg.Regions, ", "))
 		}
-		region = r
+		region = regionOverride
 	}
 	cs, err := credStore()
 	if err != nil {

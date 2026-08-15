@@ -64,3 +64,17 @@ func TestStatusPrefersEnvRegion(t *testing.T) {
 	out := run(t, "status")
 	require.Contains(t, out, "eu-central-1")
 }
+
+func TestUseRegionWhitespaceIsRejected(t *testing.T) {
+	setupFakeEnv(t, integrationConfig)
+	run(t, "login")
+	// Whitespace-padded values must be rejected outright, not trimmed into
+	// validity; pure whitespace must not be treated as "not provided".
+	for _, bad := range []string{" us-west-2 ", "\tus-west-2", "   "} {
+		t.Run(bad, func(t *testing.T) {
+			stdout, _, err := runOutErr(t, "shell-switch", "use", "dev", "--region", bad)
+			require.Error(t, err, "value %q must be rejected", bad)
+			require.Empty(t, stdout)
+		})
+	}
+}

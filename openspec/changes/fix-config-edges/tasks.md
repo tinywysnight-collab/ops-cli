@@ -1,0 +1,4 @@
+- [x] RED/GREEN: state.json `null` yields an empty map and the next Put succeeds
+- [x] RED/GREEN: `--region` whitespace-padding and blank values are rejected with an error
+- [x] RED/GREEN: `ValidateSTSResult` table test; wired into master and citizen STS assumes
+- [x] Full gates (vet, lint, race tests) and `make spec`

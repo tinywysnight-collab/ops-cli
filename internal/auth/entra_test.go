@@ -5,10 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/tinywysnight-collab/ops-cli/internal/auth"
+	"github.com/tinywysnight-collab/ops-cli/internal/creds"
 )
 
 func TestEntraProviderReturnsProvidedSAMLAssertionFromEnv(t *testing.T) {
@@ -56,6 +58,33 @@ func TestEntraProviderRequiresConfiguredUsernameWithoutProvidedAssertion(t *test
 
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "username")
+		})
+	}
+}
+
+func TestValidateSTSResult(t *testing.T) {
+	full := creds.Credentials{AccessKeyID: "A", SecretAccessKey: "S", SessionToken: "T"}
+	future := time.Now().Add(time.Hour)
+	cases := []struct {
+		name    string
+		c       creds.Credentials
+		expiry  time.Time
+		wantErr bool
+	}{
+		{"complete session", full, future, false},
+		{"missing token", creds.Credentials{AccessKeyID: "A", SecretAccessKey: "S"}, future, true},
+		{"missing key", creds.Credentials{AccessKeyID: "A", SessionToken: "T"}, future, true},
+		{"zero expiry", full, time.Time{}, true},
+		{"past expiry", full, time.Now().Add(-time.Minute), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := auth.ValidateSTSResult("role", tc.c, tc.expiry)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }

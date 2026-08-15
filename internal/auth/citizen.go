@@ -40,9 +40,14 @@ func STSAssume(ctx context.Context, master creds.Credentials, roleARN, sessionNa
 		return creds.Credentials{}, time.Time{}, fmt.Errorf("assume role %s: STS returned no credentials", roleARN)
 	}
 	c := out.Credentials
-	return creds.Credentials{
+	stsCreds := creds.Credentials{
 		AccessKeyID:     aws.ToString(c.AccessKeyId),
 		SecretAccessKey: aws.ToString(c.SecretAccessKey),
 		SessionToken:    aws.ToString(c.SessionToken),
-	}, aws.ToTime(c.Expiration), nil
+	}
+	expiry := aws.ToTime(c.Expiration)
+	if err := ValidateSTSResult("assume role "+roleARN, stsCreds, expiry); err != nil {
+		return creds.Credentials{}, time.Time{}, err
+	}
+	return stsCreds, expiry, nil
 }

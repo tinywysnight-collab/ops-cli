@@ -32,9 +32,30 @@ func assumeMaster(ctx context.Context, api AssumeWithSAMLAPI, principalARN, role
 		return creds.Credentials{}, time.Time{}, fmt.Errorf("assume master role %s: STS returned no credentials", roleARN)
 	}
 	c := out.Credentials
-	return creds.Credentials{
+	stsCreds := creds.Credentials{
 		AccessKeyID:     aws.ToString(c.AccessKeyId),
 		SecretAccessKey: aws.ToString(c.SecretAccessKey),
 		SessionToken:    aws.ToString(c.SessionToken),
-	}, aws.ToTime(c.Expiration), nil
+	}
+	expiry := aws.ToTime(c.Expiration)
+	if err := ValidateSTSResult("assume master role "+roleARN, stsCreds, expiry); err != nil {
+		return creds.Credentials{}, time.Time{}, err
+	}
+	return stsCreds, expiry, nil
+}
+
+// ValidateSTSResult rejects an STS response that is structurally unusable:
+// empty token/key fields or a missing/non-future expiry must never be written
+// as a cached session. label names the call site in the error.
+func ValidateSTSResult(label string, c creds.Credentials, expiry time.Time) error {
+	if !c.HasSessionToken() {
+		return fmt.Errorf("%s: STS returned incomplete credentials (empty access key, secret key, or session token)", label)
+	}
+	// A zero expiry means STS omitted Expiration; the write would poison the
+	// cache with an entry that never expires. A merely past expiry is left to
+	// the normal IsExpired path so injected-clock tests stay deterministic.
+	if expiry.IsZero() {
+		return fmt.Errorf("%s: STS returned no expiry", label)
+	}
+	return nil
 }

@@ -52,6 +52,11 @@ func (s *Store) Load() (map[string]Entry, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("parse state %s: %w", s.path, err)
 	}
+	// A literal JSON `null` decodes into a nil map; hand it back as empty so
+	// the next Put does not panic on assignment to nil.
+	if m == nil {
+		m = map[string]Entry{}
+	}
 	return m, nil
 }
 
