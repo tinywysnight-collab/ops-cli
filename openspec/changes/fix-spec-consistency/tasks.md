@@ -1,0 +1,8 @@
+- [x] Scope the `opsx default` master-expiry failure clause to cache misses in the in-flight fix-logout-safety delta (avoids double-MODIFIED)
+- [x] account-switching: required account region (drop fallback chain); switch latency as SLO
+- [x] credential-store: ErrMasterExpired-only sentinels, transparent citizen refresh scenario
+- [x] entra-auth: password-handling wording reflects env/form-encoding trade-offs
+- [x] cli-foundation: cross-compile scenario names `make cross`
+- [x] Replace TBD Purposes in interactive-config-management and terminal-region-switching
+- [x] Rewrite stale `[default]` sections in USAGE.md and USAGE.zh-CN.md
+- [x] openspec validate --strict, make spec

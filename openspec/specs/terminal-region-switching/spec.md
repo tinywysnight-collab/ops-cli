@@ -1,7 +1,8 @@
 # terminal-region-switching Specification
 
 ## Purpose
-TBD - created by archiving change add-interactive-config-management. Update Purpose after archive.
+Interactive selection of a department-approved region that exports only the current terminal's AWS_REGION/AWS_DEFAULT_REGION, without persisting a runtime preference.
+
 ## Requirements
 ### Requirement: Interactively switch the current terminal region
 The system SHALL expose TTY-only `opsx region`, presenting the top-level `regions` values as a numbered menu in configuration order and marking the current `AWS_REGION` when it is an allowed value. Selecting a region through shell integration SHALL set both `AWS_REGION` and `AWS_DEFAULT_REGION` in only the invoking terminal.

@@ -1,7 +1,8 @@
 # interactive-config-management Specification
 
 ## Purpose
-TBD - created by archiving change add-interactive-config-management. Update Purpose after archive.
+TTY-only interactive account and cluster add/delete with validation, confirmation, dependency protection, and safe local YAML persistence — operators manage config.yaml resources without hand-editing.
+
 ## Requirements
 ### Requirement: Configuration mutation is interactive and TTY-only
 The system SHALL expose `opsx account add`, `opsx account delete`, `opsx cluster add`, and `opsx cluster delete` as interactive commands. These commands MUST require terminal stdin, MUST NOT accept non-interactive resource-field flags, and MUST fail clearly without modifying configuration when stdin is not a TTY.

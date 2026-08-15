@@ -175,32 +175,13 @@ opsx 会写入两个**默认**位置，使普通 `aws` / `kubectl` 即使在 ops
 
 ### 默认 AWS profile
 
-`opsx use` 会用刚 assume 出的 citizen 凭证覆盖 `~/.aws/credentials` 中的共享 `[default]` profile
-（同时也写入 `[<别名>.<模式>]`）。因此 `aws`/`kubectl` 通过 AWS 的默认 profile 回退机制即可指向你
-最近切换的账号——无需环境变量、无需 `eval`。
+`opsx use` 只写 per-(alias,mode) profile——切换**不会**写入共享 `[default]` profile
+（它是全局 latest-wins，无法提供多终端隔离）。
 
-- `[default]` 反映你**最近一次** `opsx use`（本身不提供多终端隔离）。
-- opsx 将 `[default]` 视为由 opsx 管理并无条件覆盖。若你在其中保存了长期凭证，请先移到具名 profile。
-- `opsx logout` 也会清除 `[default]`。
-
-### 默认 kubeconfig（`~/.kube/config`）
-
-每次 `opsx kube <别名>` **还会**通过 `aws eks update-kubeconfig` 把集群合并进 `~/.kube/config`
-（在生成的 exec 块中携带 `--profile <别名>.<模式>`）并设为 `current-context`。该 context 名用集群的
-**真实 EKS 名**（`clusters.<别名>.name`），而**不是** opsx 的 friendly 别名。因此 `kubectl` 在
-**没有** `KUBECONFIG`、shell 函数或 `eval` 的情况下也能指向该集群，并以集群账号身份认证。该合并是无条件的
-（opsx 是本地单用户工具）。
-
-- `~/.kube/config` 反映所有终端中**最近一次** `opsx kube`——此处不做多终端隔离。已安装 shell 函数的
-  终端通过各自每 `(集群,模式)` 的 `KUBECONFIG` 保持隔离，而 `KUBECONFIG` 优先于 `~/.kube/config`，
-  因此该合并纯属增量。
-- context 名是真实 EKS 集群名，**并非**全局唯一：跨账号/区域同名的两个集群会在此处合并成同一个 context，
-  最近一次切换覆盖之前的。需要无碰撞隔离时，请用每 `(集群,模式)` 的 `KUBECONFIG`（按 别名+模式 命名）。
-- AWS CLI 自身的合并会保留你无关的 `clusters`/`contexts`/`users` 条目；opsx 不传任何破坏性参数，
-  并在 `~/.kube` 缺失时创建它。
-- `opsx logout` **不会**修改 `~/.kube/config`。
-
----
+- 需要时用 `opsx default <alias>` 显式地把已 ensure 的 citizen 凭证复制进 `[default]`，
+  供不消费 `AWS_PROFILE` 的 shell/工具使用；该命令有意 latest-wins，并会复用未过期的缓存。
+- `opsx logout` 只在 `[default]` 是完整的 opsx STS 会话时才清理；你自己维护的
+  `[default]`（如长期密钥）会被保留并提示。
 
 ## 7. 多终端隔离原理
 

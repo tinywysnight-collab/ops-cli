@@ -7,7 +7,7 @@ The system SHALL provide `opsx default <account-alias>` as an explicit opt-in co
 
 For compatibility with older opsx versions that may have written `[default]`, `opsx logout` SHALL clear `[default]` only when it holds a complete opsx STS session (access key, secret key, and session token). A `[default]` maintained by other means — for example the user's long-term access keys — SHALL be preserved and reported, never deleted.
 
-`opsx default` SHALL reuse the cached citizen profile when one is unexpired instead of forcing a fresh AssumeRole; `[default]` then receives the cached credentials with their existing expiry. `opsx default` SHALL fail without writing `[default]` when the alias is unknown, when the master credentials are missing or stale (surfaced as the re-login hint), or when the ensured profile is incomplete (missing session token).
+`opsx default` SHALL reuse the cached citizen profile when one is unexpired instead of forcing a fresh AssumeRole; `[default]` then receives the cached credentials with their existing expiry. When the citizen profile must be ensured (cache miss), `opsx default` SHALL fail without writing `[default]` if the alias is unknown, the master credentials are missing or stale (surfaced as the re-login hint), or the ensured profile is incomplete (missing session token). A valid cached citizen profile is reused without consulting master credentials, exactly like `opsx use`.
 
 #### Scenario: use writes only the named profile
 - **WHEN** `opsx use dev` runs
@@ -39,7 +39,7 @@ For compatibility with older opsx versions that may have written `[default]`, `o
 - **AND** `[default]` is not written
 
 #### Scenario: default command fails on expired master
-- **WHEN** `opsx default dev` runs and the master credentials for the current mode are missing or stale
+- **WHEN** `opsx default dev` runs with no unexpired `[dev.<mode>]` cache and the master credentials for the current mode are missing or stale
 - **THEN** the command fails with the re-login hint (`opsx login [--opr]`)
 - **AND** `[default]` is not written
 
