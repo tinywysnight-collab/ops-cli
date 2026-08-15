@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -33,11 +34,21 @@ func TestUpdateKubeconfigInvokesAWS(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "aws", gotName)
+	// The aws CLI writes a staging file (same directory) that is renamed over
+	// the target; assert everything except the generated staging file name.
+	stagingIdx := 0
+	for i, a := range gotArgs {
+		if a == "--kubeconfig" {
+			stagingIdx = i + 1
+		}
+	}
+	require.Equal(t, filepath.Join(filepath.Dir(kubePath), filepath.Base(gotArgs[stagingIdx])), gotArgs[stagingIdx])
+	require.True(t, strings.HasPrefix(filepath.Base(gotArgs[stagingIdx]), ".opsx-kube-tmp-"))
 	require.Equal(t, []string{
 		"eks", "update-kubeconfig",
 		"--region", "ap-southeast-2",
 		"--name", "dev-eks-cluster-01",
-		"--kubeconfig", kubePath,
+		"--kubeconfig", gotArgs[stagingIdx],
 		"--profile", "dev.admin",
 	}, gotArgs)
 	require.NotContains(t, gotArgs, "--alias")
@@ -69,7 +80,7 @@ func TestUpdateKubeconfigAliasOption(t *testing.T) {
 		"eks", "update-kubeconfig",
 		"--region", "ap-southeast-2",
 		"--name", "dev-eks-cluster-01",
-		"--kubeconfig", defaultPath,
+		"--kubeconfig", gotArgs[indexAfter(gotArgs, "--kubeconfig")],
 		"--profile", "dev.admin",
 		"--alias", "dev-syd",
 	}, gotArgs)
@@ -94,4 +105,13 @@ func TestUpdateKubeconfigMissingTool(t *testing.T) {
 	err := s.UpdateKubeconfig(context.Background(), "r", "c", filepath.Join(t.TempDir(), "k.yaml"), "dev.admin", "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "kubectl")
+}
+
+func indexAfter(args []string, flag string) int {
+	for i, a := range args {
+		if a == flag {
+			return i + 1
+		}
+	}
+	return 0
 }

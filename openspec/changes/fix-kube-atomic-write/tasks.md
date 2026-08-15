@@ -1,0 +1,4 @@
+- [x] RED: cancelled switch leaves the existing kubeconfig intact (partial-write fake)
+- [x] RED: concurrent same-cluster switches yield one complete kubeconfig, no staging leftovers
+- [x] GREEN: staging + fsync + chmod + rename under the shared lock; existing invocation tests updated for the staging path
+- [x] Full gates and strict validation

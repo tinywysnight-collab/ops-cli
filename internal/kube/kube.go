@@ -9,6 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/tinywysnight-collab/ops-cli/internal/lock"
+	"github.com/tinywysnight-collab/ops-cli/internal/paths"
 )
 
 // ExecFunc runs an external command with extra environment entries. Child
@@ -22,11 +25,18 @@ type LookPathFunc func(file string) (string, error)
 type Service struct {
 	Exec     ExecFunc
 	LookPath LookPathFunc
+	// LockPath serializes concurrent writers of the same kubeconfig through
+	// the shared opsx advisory lock. Empty disables locking (focused tests).
+	LockPath string
 }
 
 // NewService returns a Service wired to the real os/exec implementations.
 func NewService() *Service {
-	return &Service{Exec: defaultExec, LookPath: exec.LookPath}
+	lockPath, err := paths.LockFile()
+	if err != nil {
+		lockPath = ""
+	}
+	return &Service{Exec: defaultExec, LookPath: exec.LookPath, LockPath: lockPath}
 }
 
 // requiredTools must be present for `opsx kube` to work.
@@ -66,10 +76,60 @@ func (s *Service) UpdateKubeconfig(ctx context.Context, region, clusterName, kub
 		args = append(args, "--alias", alias)
 	}
 	env := []string{"AWS_PROFILE=" + awsProfile}
-	if err := s.Exec(ctx, env, "aws", args...); err != nil {
-		return fmt.Errorf("aws eks update-kubeconfig for cluster %s: %w", clusterName, err)
+
+	// The aws CLI is an external writer with no atomicity of its own, so it
+	// writes a staging file in the same directory that is fsynced and renamed
+	// over the target: concurrent same-cluster switches serialize under the
+	// shared lock, and a cancelled or failed run can never leave a torn or
+	// partially-truncated kubeconfig that a live terminal would then consume.
+	update := func() error {
+		staging, err := os.CreateTemp(filepath.Dir(kubeconfigPath), ".opsx-kube-tmp-*")
+		if err != nil {
+			return fmt.Errorf("create staging kubeconfig: %w", err)
+		}
+		stagingPath := staging.Name()
+		stagingErr := staging.Close()
+		if stagingErr != nil {
+			_ = os.Remove(stagingPath)
+			return fmt.Errorf("close staging kubeconfig: %w", stagingErr)
+		}
+		defer func() { _ = os.Remove(stagingPath) }() // no-op after successful rename
+
+		stageArgs := make([]string, len(args))
+		copy(stageArgs, args)
+		for i, a := range stageArgs {
+			if a == "--kubeconfig" {
+				stageArgs[i+1] = stagingPath
+				break
+			}
+		}
+		if err := s.Exec(ctx, env, "aws", stageArgs...); err != nil {
+			return fmt.Errorf("aws eks update-kubeconfig for cluster %s: %w", clusterName, err)
+		}
+		f, err := os.Open(stagingPath)
+		if err != nil {
+			return fmt.Errorf("open staging kubeconfig: %w", err)
+		}
+		syncErr := f.Sync()
+		closeErr := f.Close()
+		if syncErr != nil {
+			return fmt.Errorf("sync staging kubeconfig: %w", syncErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("close staging kubeconfig: %w", closeErr)
+		}
+		if err := os.Chmod(stagingPath, 0o600); err != nil {
+			return fmt.Errorf("chmod staging kubeconfig: %w", err)
+		}
+		if err := os.Rename(stagingPath, kubeconfigPath); err != nil {
+			return fmt.Errorf("publish kubeconfig: %w", err)
+		}
+		return nil
 	}
-	return nil
+	if s.LockPath == "" {
+		return update()
+	}
+	return lock.With(ctx, s.LockPath, update)
 }
 
 // defaultExec runs name with args, inheriting the environment plus extra, and
