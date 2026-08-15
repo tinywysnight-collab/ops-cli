@@ -95,9 +95,9 @@ The system SHALL NOT write the shared `[default]` profile during `opsx use`. `[d
 
 The system SHALL provide `opsx default <account-alias>` as an explicit opt-in command that ensures the selected citizen profile for the current mode, then copies that profile's STS credentials into `[default]`. This command is intentionally latest-wins and is for shells or tools that do not consume `AWS_PROFILE`.
 
-For compatibility with older opsx versions that may have written `[default]`, `opsx logout` SHALL continue to clear `[default]` along with other opsx-managed profiles.
+For compatibility with older opsx versions that may have written `[default]`, `opsx logout` SHALL clear `[default]` only when it holds a complete opsx STS session (access key, secret key, and session token). A `[default]` maintained by other means — for example the user's long-term access keys — SHALL be preserved and reported, never deleted.
 
-`opsx default` SHALL reuse the cached citizen profile when one is unexpired instead of forcing a fresh AssumeRole; `[default]` then receives the cached credentials with their existing expiry. `opsx default` SHALL fail without writing `[default]` when the alias is unknown, when the master credentials are missing or stale (surfaced as the re-login hint), or when the ensured profile is incomplete (missing session token).
+`opsx default` SHALL reuse the cached citizen profile when one is unexpired instead of forcing a fresh AssumeRole; `[default]` then receives the cached credentials with their existing expiry. When the citizen profile must be ensured (cache miss), `opsx default` SHALL fail without writing `[default]` if the alias is unknown, the master credentials are missing or stale (surfaced as the re-login hint), or the ensured profile is incomplete (missing session token). A valid cached citizen profile is reused without consulting master credentials, exactly like `opsx use`.
 
 #### Scenario: use writes only the named profile
 - **WHEN** `opsx use dev` runs
@@ -129,7 +129,7 @@ For compatibility with older opsx versions that may have written `[default]`, `o
 - **AND** `[default]` is not written
 
 #### Scenario: default command fails on expired master
-- **WHEN** `opsx default dev` runs and the master credentials for the current mode are missing or stale
+- **WHEN** `opsx default dev` runs with no unexpired `[dev.<mode>]` cache and the master credentials for the current mode are missing or stale
 - **THEN** the command fails with the re-login hint (`opsx login [--opr]`)
 - **AND** `[default]` is not written
 
@@ -138,7 +138,12 @@ For compatibility with older opsx versions that may have written `[default]`, `o
 - **THEN** the command fails with an error naming the incomplete profile
 - **AND** `[default]` is not written
 
-#### Scenario: logout clears default
-- **WHEN** `opsx logout` runs
+#### Scenario: logout clears an opsx-shaped default
+- **WHEN** `opsx logout` runs and `[default]` holds a complete STS session written by an older opsx version
 - **THEN** the `[default]` profile is removed as compatibility cleanup along with the other purged opsx-managed profiles
+
+#### Scenario: logout preserves a user-maintained default
+- **WHEN** `opsx logout` runs and `[default]` contains the user's own long-term credentials without a session token
+- **THEN** `[default]` is left untouched
+- **AND** logout reports it as preserved
 

@@ -3,9 +3,7 @@
 ## Purpose
 
 Persist AWS credentials and opsx state safely: concurrency-safe, atomic, crash-safe, permission-correct writes that preserve unrelated content, keep credentials and state consistent as one unit, single-flight concurrent switches, handle symlinks, detect expiry with sentinels, and purge on logout — all testable against temp dirs and an injectable clock.
-
 ## Requirements
-
 ### Requirement: Concurrency-safe credential and state writes
 The system SHALL guard every read-modify-write of `~/.aws/credentials` and `~/.config/opsx/state.json` with a `gofrs/flock` advisory exclusive lock so that concurrent writers never corrupt the files.
 
@@ -103,7 +101,7 @@ The system SHALL acquire the advisory lock with a bounded timeout derived from t
 - **AND** Ctrl-C cancels the wait promptly
 
 ### Requirement: Purge cached credentials and state
-The system SHALL provide `opsx logout [--opr] [--all]` to remove cached credentials and their state entries without hand-editing files. By default it SHALL purge the master profile for the current or selected mode and that mode's citizen profiles; `--all` SHALL purge every opsx-managed profile and state entry for both modes. The command MUST run under the shared advisory lock, preserve unrelated profiles and comments in `~/.aws/credentials`, and leave a file that is valid for the AWS CLI.
+The system SHALL provide `opsx logout [--opr] [--all]` to remove cached credentials and their state entries without hand-editing files. By default it SHALL purge the master profile for the current or selected mode and that mode's citizen profiles; `--all` SHALL purge every opsx-managed profile and state entry for both modes. The command MUST run the entire plan-verify-delete sequence under ONE shared advisory lock window — reloading state, planning targets, verifying shapes, and deleting credentials and state together — so a concurrent login or use cannot leave live credentials behind after logout reports success. Before deleting any target, it MUST verify the profile holds a complete opsx STS session (access key, secret key, and session token); a present-but-non-STS profile is user-maintained and MUST be preserved and reported. It MUST preserve unrelated profiles and comments in `~/.aws/credentials` and leave a file that is valid for the AWS CLI.
 
 #### Scenario: Logout clears the master cache for a mode
 - **WHEN** `opsx logout` runs for a mode whose master credentials are cached
@@ -115,6 +113,11 @@ The system SHALL provide `opsx logout [--opr] [--all]` to remove cached credenti
 - **WHEN** `opsx logout --all` runs
 - **THEN** all opsx-managed master and citizen profiles and their state entries are removed for both modes
 - **AND** non-opsx profiles remain untouched
+
+#### Scenario: Logout preserves non-STS profiles
+- **WHEN** a state entry (corrupted or hand-edited) names a profile that holds long-term keys without a session token, or `[default]` is user-maintained
+- **THEN** logout does not delete that profile
+- **AND** it reports the profile as preserved
 
 ### Requirement: Secure file permissions
 The system SHALL write `~/.aws/credentials` and `state.json` with mode `0600` and create `~/.config/opsx/` directories with mode `0700`.
@@ -167,3 +170,4 @@ The system SHALL document, in `README.md`, the operational limits behind its iso
 #### Scenario: Limitations are stated for the user
 - **WHEN** a user reads `README.md`
 - **THEN** the NFS/network-filesystem locking caveat, the consistency model, the Entra live-verification boundary, and the assertion escape hatch are documented
+
