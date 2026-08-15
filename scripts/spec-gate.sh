@@ -72,7 +72,9 @@ if [ -n "$spec_changes" ]; then
 	missing=""
 	for spec in $spec_changes; do
 		cap=$(printf '%s' "$spec" | cut -d/ -f3)
-		if ! printf '%s\n' "$change_changes" | grep -Eq "changes/(archive/)?[^/]*/specs/$cap/" && ! purpose_only "$spec"; then
+		# here-string, not a pipe: under pipefail, printf|grep -q can die on
+		# SIGPIPE after grep's early exit and false-fail the match.
+		if ! grep -Eq "changes/(archive/)?[^/]*/specs/$cap/" <<<"$change_changes" && ! purpose_only "$spec"; then
 			missing="$missing $spec"
 		fi
 	done
