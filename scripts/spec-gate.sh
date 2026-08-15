@@ -51,6 +51,18 @@ else
 	changed=$(git diff --name-only "$base_ref" "$head_ref")
 fi
 spec_changes=$(printf '%s\n' "$changed" | grep '^openspec/specs/' || true)
+
+# purpose_only reports whether the range's changes to a spec file touch only
+# its Purpose section. openspec itself instructs updating Purpose after
+# archive ("TBD - created by archiving..."), so those edits are sanctioned
+# even without a matching requirement delta.
+purpose_only() {
+	git diff "$base_ref" "$head_ref" -- "$1" | awk '
+		/^[-+ ]* ?## Requirements/ { in_reqs = 1 }
+		/^[-+]/ && in_reqs { exit 1 }
+		END { exit 0 }
+	'
+}
 change_changes=$(printf '%s\n' "$changed" | grep '^openspec/changes/' || true)
 
 # Tighten the tripwire: a canonical-spec edit must be accompanied by a
@@ -60,7 +72,7 @@ if [ -n "$spec_changes" ]; then
 	missing=""
 	for spec in $spec_changes; do
 		cap=$(printf '%s' "$spec" | cut -d/ -f3)
-		if ! printf '%s\n' "$change_changes" | grep -q "changes/[^/]*/specs/$cap/"; then
+		if ! printf '%s\n' "$change_changes" | grep -Eq "changes/(archive/)?[^/]*/specs/$cap/" && ! purpose_only "$spec"; then
 			missing="$missing $spec"
 		fi
 	done
