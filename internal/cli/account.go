@@ -26,7 +26,7 @@ func newAccountAddCommand() *cobra.Command {
 		Short: "Interactively add an account",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			p := newPromptSession(cmd.InOrStdin(), cmd.ErrOrStderr(), interactiveTerminal(cmd.InOrStdin()))
+			p := newPromptSession(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), interactiveTerminal(cmd.InOrStdin()))
 			if err := p.requireTTY(); err != nil {
 				return err
 			}
@@ -112,7 +112,7 @@ func newAccountDeleteCommand() *cobra.Command {
 		Short: "Interactively delete an account",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			p := newPromptSession(cmd.InOrStdin(), cmd.ErrOrStderr(), interactiveTerminal(cmd.InOrStdin()))
+			p := newPromptSession(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), interactiveTerminal(cmd.InOrStdin()))
 			if err := p.requireTTY(); err != nil {
 				return err
 			}

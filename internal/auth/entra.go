@@ -484,7 +484,7 @@ func (p *EntraSAMLProvider) FetchAssertion(ctx context.Context, role MasterRole)
 		Timeout:       p.Client.Timeout,
 		Jar:           jar,
 	}
-	password, err := ReadPassword(p.Stderr, "Password: ")
+	password, err := ReadPassword(ctx, p.Stderr, "Password: ")
 	if err != nil {
 		return "", err
 	}

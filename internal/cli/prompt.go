@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,14 +12,19 @@ import (
 	"golang.org/x/term"
 )
 
+// promptSession reads interactive answers. Its reads observe ctx so that
+// SIGINT — captured by the root signal context, not delivered as a ^C byte by
+// a cooked-mode TTY — cancels a pending prompt instead of leaving the command
+// blocked on stdin.
 type promptSession struct {
+	ctx    context.Context
 	reader *bufio.Reader
 	out    io.Writer
 	tty    bool
 }
 
-func newPromptSession(in io.Reader, out io.Writer, tty bool) *promptSession {
-	return &promptSession{reader: bufio.NewReader(in), out: out, tty: tty}
+func newPromptSession(ctx context.Context, in io.Reader, out io.Writer, tty bool) *promptSession {
+	return &promptSession{ctx: ctx, reader: bufio.NewReader(in), out: out, tty: tty}
 }
 
 var interactiveTerminal = func(in io.Reader) bool {
@@ -34,22 +40,40 @@ func (p *promptSession) requireTTY() error {
 }
 
 func (p *promptSession) line(prompt string) (string, bool, error) {
-	fmt.Fprint(p.out, prompt)
-	line, err := p.reader.ReadString('\n')
-	value := strings.TrimSpace(line)
-	if value == "\x03" {
+	// Cancellation wins even when input is already available: a SIGINT during
+	// the prompt must never continue into confirmation or a config write.
+	if p.ctx.Err() != nil {
 		return "", true, nil
 	}
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			if line == "" {
-				return "", true, nil
-			}
-			return value, false, nil
-		}
-		return "", false, fmt.Errorf("read interactive input: %w", err)
+	fmt.Fprint(p.out, prompt)
+	type readResult struct {
+		line string
+		err  error
 	}
-	return value, false, nil
+	ch := make(chan readResult, 1)
+	go func() {
+		line, err := p.reader.ReadString('\n')
+		ch <- readResult{line: line, err: err}
+	}()
+	select {
+	case <-p.ctx.Done():
+		return "", true, nil
+	case r := <-ch:
+		value := strings.TrimSpace(r.line)
+		if value == "\x03" {
+			return "", true, nil
+		}
+		if r.err != nil {
+			if errors.Is(r.err, io.EOF) {
+				if r.line == "" {
+					return "", true, nil
+				}
+				return value, false, nil
+			}
+			return "", false, fmt.Errorf("read interactive input: %w", r.err)
+		}
+		return value, false, nil
+	}
 }
 
 func (p *promptSession) text(label string, optional bool, validate func(string) error) (string, bool, error) {

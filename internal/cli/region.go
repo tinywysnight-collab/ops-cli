@@ -25,7 +25,7 @@ func newRegionCommand() *cobra.Command {
 }
 
 func selectTerminalRegion(cmd *cobra.Command) (string, bool, error) {
-	p := newPromptSession(cmd.InOrStdin(), cmd.ErrOrStderr(), interactiveTerminal(cmd.InOrStdin()))
+	p := newPromptSession(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), interactiveTerminal(cmd.InOrStdin()))
 	if err := p.requireTTY(); err != nil {
 		return "", false, err
 	}
