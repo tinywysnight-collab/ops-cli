@@ -71,20 +71,41 @@ func (s *Store) writeProfile(profile string, c Credentials) error {
 
 // Delete removes complete profile sections, preserving unrelated content.
 func (s *Store) Delete(ctx context.Context, profiles []string) error {
-	targets := map[string]struct{}{}
-	for _, profile := range profiles {
-		targets[profile] = struct{}{}
-	}
+	targets := deleteTargets(profiles)
 	if len(targets) == 0 {
 		return nil
 	}
 	return lock.With(ctx, s.lockPath, func() error {
-		data, err := s.read()
-		if err != nil {
-			return err
-		}
-		return fsutil.AtomicWrite(s.path, deleteProfiles(data, targets), 0o600)
+		return s.deleteProfiles(targets)
 	})
+}
+
+// DeleteSharedLockHeld removes profile sections WITHOUT acquiring the shared
+// lock. The caller MUST already hold the opsx lock at this store's lockPath
+// (logout composes its plan, credential deletion, and state deletion in one
+// window).
+func (s *Store) DeleteSharedLockHeld(profiles []string) error {
+	targets := deleteTargets(profiles)
+	if len(targets) == 0 {
+		return nil
+	}
+	return s.deleteProfiles(targets)
+}
+
+func deleteTargets(profiles []string) map[string]struct{} {
+	targets := map[string]struct{}{}
+	for _, profile := range profiles {
+		targets[profile] = struct{}{}
+	}
+	return targets
+}
+
+func (s *Store) deleteProfiles(targets map[string]struct{}) error {
+	data, err := s.read()
+	if err != nil {
+		return err
+	}
+	return fsutil.AtomicWrite(s.path, deleteProfiles(data, targets), 0o600)
 }
 
 // Read returns a profile's credentials and whether it is present. A profile is

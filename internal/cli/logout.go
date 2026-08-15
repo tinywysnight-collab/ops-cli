@@ -8,6 +8,8 @@ import (
 
 	"github.com/tinywysnight-collab/ops-cli/internal/config"
 	"github.com/tinywysnight-collab/ops-cli/internal/creds"
+	"github.com/tinywysnight-collab/ops-cli/internal/lock"
+	"github.com/tinywysnight-collab/ops-cli/internal/paths"
 	"github.com/tinywysnight-collab/ops-cli/internal/state"
 )
 
@@ -22,11 +24,14 @@ func newLogoutCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			profiles, err := runLogout(cmd.Context(), mode, all)
+			removed, preserved, err := runLogout(cmd.Context(), mode, all)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "logged out: removed %d opsx-managed profile(s)\n", len(profiles))
+			fmt.Fprintf(cmd.ErrOrStderr(), "logged out: removed %d opsx-managed profile(s)\n", len(removed))
+			if len(preserved) > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "preserved %d user-maintained profile(s) not written by opsx: %v\n", len(preserved), preserved)
+			}
 			return nil
 		},
 	}
@@ -34,30 +39,55 @@ func newLogoutCommand() *cobra.Command {
 	return cmd
 }
 
-func runLogout(ctx context.Context, mode string, all bool) ([]string, error) {
+// runLogout plans and executes the purge as ONE transaction under the shared
+// advisory lock: reload state, plan targets, verify each existing target holds
+// a complete opsx STS session, then delete credentials and state in the same
+// window. A target present in the credentials file without a session token is
+// user-maintained (for example long-term keys in [default]) and is preserved
+// and reported instead of deleted.
+func runLogout(ctx context.Context, mode string, all bool) (removed, preserved []string, err error) {
 	cs, err := credStore()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	ss, err := stateStore()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	entries, err := ss.Load()
+	lp, err := paths.LockFile()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	profiles, err := logoutProfiles(mode, all, entries)
+	err = lock.With(ctx, lp, func() error {
+		entries, err := ss.Load()
+		if err != nil {
+			return err
+		}
+		targets, err := logoutProfiles(mode, all, entries)
+		if err != nil {
+			return err
+		}
+		removed, preserved = []string{}, []string{}
+		for _, profile := range targets {
+			c, ok, err := cs.Read(profile)
+			if err != nil {
+				return err
+			}
+			if ok && !c.HasSessionToken() {
+				preserved = append(preserved, profile)
+				continue
+			}
+			removed = append(removed, profile)
+		}
+		if err := cs.DeleteSharedLockHeld(removed); err != nil {
+			return err
+		}
+		return ss.DeleteSharedLockHeld(removed)
+	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if err := cs.Delete(ctx, profiles); err != nil {
-		return nil, err
-	}
-	if err := ss.Delete(ctx, profiles); err != nil {
-		return nil, err
-	}
-	return profiles, nil
+	return removed, preserved, nil
 }
 
 func logoutProfiles(mode string, all bool, entries map[string]state.Entry) ([]string, error) {

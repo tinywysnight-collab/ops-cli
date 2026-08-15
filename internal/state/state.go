@@ -121,25 +121,45 @@ func (s *Store) Update(ctx context.Context, profile string, fn func(Entry, bool)
 
 // Delete removes profile entries from state.json under the shared lock.
 func (s *Store) Delete(ctx context.Context, profiles []string) error {
-	targets := map[string]struct{}{}
-	for _, profile := range profiles {
-		targets[profile] = struct{}{}
-	}
+	targets := deleteTargets(profiles)
 	if len(targets) == 0 {
 		return nil
 	}
 	return lock.With(ctx, s.lockPath, func() error {
-		m, err := s.Load()
-		if err != nil {
-			return err
-		}
-		for profile := range targets {
-			delete(m, profile)
-		}
-		data, err := json.MarshalIndent(m, "", "  ")
-		if err != nil {
-			return fmt.Errorf("encode state: %w", err)
-		}
-		return fsutil.AtomicWrite(s.path, data, 0o600)
+		return s.deleteProfiles(targets)
 	})
+}
+
+// DeleteSharedLockHeld removes profile entries WITHOUT acquiring the shared
+// lock. The caller MUST already hold the opsx lock at this store's lockPath
+// (logout composes credential and state deletion in one window).
+func (s *Store) DeleteSharedLockHeld(profiles []string) error {
+	targets := deleteTargets(profiles)
+	if len(targets) == 0 {
+		return nil
+	}
+	return s.deleteProfiles(targets)
+}
+
+func deleteTargets(profiles []string) map[string]struct{} {
+	targets := map[string]struct{}{}
+	for _, profile := range profiles {
+		targets[profile] = struct{}{}
+	}
+	return targets
+}
+
+func (s *Store) deleteProfiles(targets map[string]struct{}) error {
+	m, err := s.Load()
+	if err != nil {
+		return err
+	}
+	for profile := range targets {
+		delete(m, profile)
+	}
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode state: %w", err)
+	}
+	return fsutil.AtomicWrite(s.path, data, 0o600)
 }
