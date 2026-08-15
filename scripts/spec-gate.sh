@@ -53,6 +53,26 @@ fi
 spec_changes=$(printf '%s\n' "$changed" | grep '^openspec/specs/' || true)
 change_changes=$(printf '%s\n' "$changed" | grep '^openspec/changes/' || true)
 
+# Tighten the tripwire: a canonical-spec edit must be accompanied by a
+# change movement for the SAME capability (an active delta or an archive
+# move), not merely any unrelated changes/ file.
+if [ -n "$spec_changes" ]; then
+	missing=""
+	for spec in $spec_changes; do
+		cap=$(printf '%s' "$spec" | cut -d/ -f3)
+		if ! printf '%s\n' "$change_changes" | grep -q "changes/[^/]*/specs/$cap/"; then
+			missing="$missing $spec"
+		fi
+	done
+	if [ -n "$missing" ]; then
+		echo "spec-gate: canonical specs changed without a matching capability delta or archive move:" >&2
+		printf '%s\n' $missing | sed 's/^/  /' >&2
+		echo "Canonical specs are only updated by archiving a change (openspec archive)." >&2
+		echo "Create a change with deltas for the same capability instead of editing openspec/specs/ directly." >&2
+		exit 1
+	fi
+fi
+
 if [ -n "$spec_changes" ] && [ -z "$change_changes" ]; then
 	echo "spec-gate: canonical specs changed without any openspec/changes/ movement:" >&2
 	printf '%s\n' "$spec_changes" | sed 's/^/  /' >&2
