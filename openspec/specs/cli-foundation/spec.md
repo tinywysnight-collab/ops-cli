@@ -3,9 +3,7 @@
 ## Purpose
 
 Provide the single static `opsx` binary, its Cobra command skeleton, signal-cancellable root context, top-level error handling, agreed package layout, and verification commands that gate the build.
-
 ## Requirements
-
 ### Requirement: Single static binary
 The system SHALL build as a single static Go binary named `opsx` with `CGO_ENABLED=0` and no runtime dependency, cross-compilable for darwin (primary) and linux (secondary).
 
@@ -19,11 +17,16 @@ The system SHALL build as a single static Go binary named `opsx` with `CGO_ENABL
 - **THEN** a version string is printed
 
 ### Requirement: Cobra root and subcommand skeleton
-The system SHALL expose a Cobra root command listing the planned subcommands (`login`, `use`, `default`, `kube`, `mode`, `status`, `ls`, `init`, `shell-switch`).
+The system SHALL expose a Cobra root command listing `login`, `use`, `default`, `kube`, `mode`, `region`, `account`, `cluster`, `status`, `ls`, `init`, and the internal `shell-switch`. The `account` and `cluster` groups SHALL each expose only `add` and `delete`; they MUST NOT expose edit, update, or rename commands.
 
-#### Scenario: Help lists subcommands
+#### Scenario: Help lists top-level subcommands
 - **WHEN** `opsx` runs with no arguments
-- **THEN** Cobra prints help listing the planned subcommands as available commands
+- **THEN** Cobra prints help listing the top-level commands, including `account`, `cluster`, and `region`
+
+#### Scenario: Resource help exposes no edit operation
+- **WHEN** `opsx account --help` or `opsx cluster --help` runs
+- **THEN** help lists `add` and `delete`
+- **AND** does not list edit, update, rename, or overwrite operations
 
 ### Requirement: Single top-level error handler
 The system SHALL return errors from command `RunE` functions up to a single top-level handler in `cmd/opsx/main.go`, which prints to stderr and sets a non-zero exit code. Commands MUST NOT call `os.Exit` or `panic` for expected conditions.
@@ -71,3 +74,4 @@ The system SHALL provide a Windows amd64 executable target that builds a `opsx.e
 - **WHEN** the Windows build target runs
 - **THEN** it produces `bin/opsx-windows-amd64.exe`
 - **AND** the build uses `CGO_ENABLED=0 GOOS=windows GOARCH=amd64`
+
