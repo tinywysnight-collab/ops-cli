@@ -85,6 +85,9 @@ func TestValidateRules(t *testing.T) {
 		{"hostile cluster alias", func(c *config.Config) {
 			c.Clusters["c;evil"] = config.Cluster{Account: "dev", Region: "r", Name: "n"}
 		}, "disallowed characters"},
+		{"case-variant cluster aliases collide", func(c *config.Config) {
+			c.Clusters["DEV-SYD"] = config.Cluster{Account: "dev", Region: "ap-southeast-2", Name: "other-eks"}
+		}, "differ only by letter case"},
 		{"missing master account id", func(c *config.Config) { c.Auth.MasterAccountID = "" }, "master_account_id"},
 		{"malformed master account id", func(c *config.Config) { c.Auth.MasterAccountID = "abc" }, "master_account_id"},
 		{"missing saml provider", func(c *config.Config) { c.Auth.SAMLProviderARN = "" }, "saml_provider_arn"},

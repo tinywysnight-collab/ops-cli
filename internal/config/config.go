@@ -212,10 +212,19 @@ func (c *Config) validateAccounts() error {
 }
 
 func (c *Config) validateClusters() error {
+	// Cluster aliases become per-(cluster,mode) kubeconfig file names. Default
+	// APFS/NTFS filesystems are case-insensitive, so two aliases differing only
+	// by letter case would silently share one physical file and overwrite each
+	// other across terminals — reject that up front.
+	seenFolded := map[string]string{} // lower(alias) -> first alias
 	for _, alias := range sortedKeys(c.Clusters) {
 		if !aliasPattern.MatchString(alias) {
 			return fmt.Errorf("cluster alias %q contains disallowed characters (allowed: letters, digits, '.', '_', '-')", alias)
 		}
+		if first, dup := seenFolded[strings.ToLower(alias)]; dup {
+			return fmt.Errorf("cluster aliases %q and %q differ only by letter case; kubeconfig file names would collide on case-insensitive filesystems", first, alias)
+		}
+		seenFolded[strings.ToLower(alias)] = alias
 		cl := c.Clusters[alias]
 		if cl.Account == "" {
 			return fmt.Errorf("cluster %q: missing 'account' reference", alias)
