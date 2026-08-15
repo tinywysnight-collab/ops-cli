@@ -3,9 +3,7 @@
 ## Purpose
 
 Switch the active EKS cluster by short alias for the current terminal's mode, generating a self-authenticating per-(cluster,mode) kubeconfig, switching the account profile too, recording the cluster in state, and isolating terminals via `KUBECONFIG`.
-
 ## Requirements
-
 ### Requirement: Switch EKS cluster by alias
 The system SHALL, on `opsx kube <cluster-alias>`, auto-ensure the cluster's account credentials for the current mode, then run `aws eks update-kubeconfig` for the alias's region and real cluster name, writing a per-(cluster,mode) kubeconfig under `~/.config/opsx/kube/`.
 
@@ -99,10 +97,17 @@ The system SHALL NOT merge into the default kubeconfig at `~/.kube/config` durin
 
 Current-terminal cluster switching MUST happen through shell integration that exports `KUBECONFIG` to the generated per-(cluster,mode) file. The generated file still carries `--profile <alias.mode>` in its exec block so `kubectl` authenticates as the selected account.
 
+Legacy residue from older opsx versions that merged contexts into `~/.kube/config` SHALL be left untouched: opsx neither writes nor removes contexts there, and `opsx logout` SHALL NOT clean `~/.kube/config`. This is a deliberate asymmetry with the `[default]` profile compatibility cleanup, because editing structured kubeconfig YAML is out of scope.
+
 #### Scenario: kube writes only the per-terminal kubeconfig
 - **WHEN** `opsx kube dev-syd` runs
 - **THEN** the cluster is written to the per-(cluster,mode) kubeconfig
 - **AND** `~/.kube/config` is not written or merged
+
+#### Scenario: legacy merged contexts are preserved, not cleaned
+- **WHEN** `~/.kube/config` contains contexts merged by an older opsx version and any current command (including `opsx kube` and `opsx logout`) runs
+- **THEN** `~/.kube/config` is not modified by opsx
+- **AND** the legacy contexts remain for the user to clean up manually
 
 ### Requirement: Clear prerequisite and expiry errors
 The system SHALL fail with a clear, actionable error when `aws` or `kubectl` is missing, or print the re-login message when credentials are expired.
@@ -110,3 +115,4 @@ The system SHALL fail with a clear, actionable error when `aws` or `kubectl` is 
 #### Scenario: Missing tool or expired creds
 - **WHEN** `opsx kube` runs but `aws` or `kubectl` is missing, or creds are expired
 - **THEN** a clear error explains the missing prerequisite, or the re-login message is printed for expiry
+

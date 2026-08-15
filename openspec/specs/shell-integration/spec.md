@@ -67,7 +67,7 @@ Because `cmd.exe` normally resolves `.exe` before `.cmd` within the same directo
 - **AND** interactive output goes to stderr
 
 ### Requirement: Wrapper only intercepts switching subcommands
-The installed shell function SHALL route ONLY the switching subcommands (`use`, `kube`, `mode`, `region`) through `opsx shell-switch … | eval`, and SHALL execute every other subcommand (`account`, `cluster`, `login`, `status`, `ls`, `init`, `--help`, `--version`, …) directly so they behave identically to invoking `opsx` without the wrapper.
+The installed shell function SHALL route ONLY the switching subcommands (`use`, `kube`, `mode`, `region`) through `opsx shell-switch … | eval`, and SHALL execute every other subcommand (`account`, `cluster`, `login`, `status`, `ls`, `init`, `default`, `--help`, `--version`, …) directly so they behave identically to invoking `opsx` without the wrapper.
 
 The wrapper MUST handle global flags that appear before the subcommand, such as `opsx --mode opr use dev` and `opsx --opr kube dev-syd`. Those invocations MUST still route switching subcommands through `shell-switch`; running the bare binary is insufficient because a child process cannot update the parent shell environment.
 
@@ -104,6 +104,11 @@ The wrapper MUST NOT evaluate unrecognized output. A switching subcommand can em
 - **WHEN** `opsx account add`, `opsx cluster delete`, `opsx login`, `opsx status`, `opsx ls`, or `opsx init zsh` runs with the installed wrapper
 - **THEN** the command runs directly rather than through `shell-switch`
 - **AND** its normal interactive or display output is preserved
+
+#### Scenario: default command runs directly and leaves the terminal unchanged
+- **WHEN** `opsx default dev` runs with the installed wrapper
+- **THEN** the command runs directly rather than through `shell-switch`
+- **AND** the invoking terminal's `AWS_PROFILE`, regions, and `KUBECONFIG` are unchanged; only the shared `[default]` credentials file is written
 
 ### Requirement: Export values are shell-safe by validation
 The system SHALL guarantee that every value emitted as `export KEY=value` is shell-safe by validating it, not by assuming it. Account/cluster aliases and the mode token SHALL be validated at config load against a strict charset (e.g. `^[A-Za-z0-9._-]+$`); the export emitter SHALL refuse any value containing shell metacharacters. This prevents a hostile or mistyped alias from injecting commands into the user's live shell via `eval`.

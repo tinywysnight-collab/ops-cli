@@ -3,9 +3,7 @@
 ## Purpose
 
 Switch between AWS citizen accounts by short alias for the current terminal's mode using cached master credentials, with per-terminal isolation and credential reuse within the validity window.
-
 ## Requirements
-
 ### Requirement: Switch account by alias
 The system SHALL, on `opsx use <account-alias>`, assume the citizen role for the current terminal's mode using cached master credentials, write the `[<alias>.<mode>]` profile, update state, and complete in under 2 seconds without triggering MFA.
 
@@ -99,6 +97,8 @@ The system SHALL provide `opsx default <account-alias>` as an explicit opt-in co
 
 For compatibility with older opsx versions that may have written `[default]`, `opsx logout` SHALL continue to clear `[default]` along with other opsx-managed profiles.
 
+`opsx default` SHALL reuse the cached citizen profile when one is unexpired instead of forcing a fresh AssumeRole; `[default]` then receives the cached credentials with their existing expiry. `opsx default` SHALL fail without writing `[default]` when the alias is unknown, when the master credentials are missing or stale (surfaced as the re-login hint), or when the ensured profile is incomplete (missing session token).
+
 #### Scenario: use writes only the named profile
 - **WHEN** `opsx use dev` runs
 - **THEN** `[dev.<mode>]` is written with the freshly-assumed citizen credentials
@@ -113,6 +113,32 @@ For compatibility with older opsx versions that may have written `[default]`, `o
 - **THEN** `[dev.<mode>]` is ensured
 - **AND** `[default]` is written with the `[dev.<mode>]` credentials
 
+#### Scenario: default command reuses the cached profile
+- **WHEN** `opsx default dev` runs and `[dev.<mode>]` is cached and unexpired
+- **THEN** `[default]` receives those cached credentials with their existing expiry
+- **AND** no additional AssumeRole is issued for the command itself
+
+#### Scenario: default command is latest-wins across invocations
+- **WHEN** `opsx default dev` and later `opsx default prod` run (including from different terminals)
+- **THEN** `[default]` holds the credentials of whichever invocation wrote last
+- **AND** no cross-terminal isolation is claimed for `[default]`
+
+#### Scenario: default command fails on unknown alias
+- **WHEN** `opsx default ghost` runs and `ghost` is not a configured account alias
+- **THEN** the command fails with an error naming the alias
+- **AND** `[default]` is not written
+
+#### Scenario: default command fails on expired master
+- **WHEN** `opsx default dev` runs and the master credentials for the current mode are missing or stale
+- **THEN** the command fails with the re-login hint (`opsx login [--opr]`)
+- **AND** `[default]` is not written
+
+#### Scenario: default command fails on incomplete profile
+- **WHEN** `opsx default dev` runs and the ensured `[dev.<mode>]` profile lacks a session token
+- **THEN** the command fails with an error naming the incomplete profile
+- **AND** `[default]` is not written
+
 #### Scenario: logout clears default
 - **WHEN** `opsx logout` runs
 - **THEN** the `[default]` profile is removed as compatibility cleanup along with the other purged opsx-managed profiles
+
