@@ -69,17 +69,30 @@ func (s *Store) Get(profile string) (Entry, bool, error) {
 // file ends up 0600 and its directory 0700.
 func (s *Store) Put(ctx context.Context, profile string, e Entry) error {
 	return lock.With(ctx, s.lockPath, func() error {
-		m, err := s.Load()
-		if err != nil {
-			return err
-		}
-		m[profile] = e
-		data, err := json.MarshalIndent(m, "", "  ")
-		if err != nil {
-			return fmt.Errorf("encode state: %w", err)
-		}
-		return fsutil.AtomicWrite(s.path, data, 0o600)
+		return s.put(profile, e)
 	})
+}
+
+// PutSharedLockHeld upserts a single profile's entry WITHOUT acquiring the
+// shared lock. The caller MUST already hold the opsx lock at this store's
+// lockPath — it exists so multi-file transactions (credentials plus state,
+// see creds.CitizenService.Use) commit inside one lock window. Acquiring the
+// lock through the normal Put from inside such a window would self-deadlock.
+func (s *Store) PutSharedLockHeld(profile string, e Entry) error {
+	return s.put(profile, e)
+}
+
+func (s *Store) put(profile string, e Entry) error {
+	m, err := s.Load()
+	if err != nil {
+		return err
+	}
+	m[profile] = e
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode state: %w", err)
+	}
+	return fsutil.AtomicWrite(s.path, data, 0o600)
 }
 
 // Update applies fn to a profile entry under the shared state lock, then writes

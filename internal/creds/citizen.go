@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/tinywysnight-collab/ops-cli/internal/config"
+	"github.com/tinywysnight-collab/ops-cli/internal/lock"
 	"github.com/tinywysnight-collab/ops-cli/internal/state"
 )
 
@@ -33,13 +34,14 @@ type CitizenService struct {
 	Now    func() time.Time
 }
 
-// citizenProfileLocks single-flights AssumeRole per profile within ONE process:
-// concurrent `Use` calls for the same profile coalesce to a single STS call
-// (proven by TestConcurrentUseSingleFlightsAssume). It is NOT a cross-process
-// guarantee — cross-process safety against credential-file corruption relies
-// entirely on the gofrs/flock inside Store.Write. The sync.Map is intentionally
-// unbounded: opsx is a short-lived CLI, so the handful of profile mutexes it
-// accrues are reclaimed when the process exits. See task 12.6.
+// citizenProfileLocks single-flights AssumeRole per profile within ONE process
+// (proven by TestConcurrentUseSingleFlightsAssume): concurrent `Use` calls for
+// the same profile share one file-lock window instead of racing to it. The
+// cross-process guarantee comes from the shared advisory file lock inside
+// useUnderSharedLock (proven by
+// TestUseUnderSharedLockSingleFlightsAcrossServiceInstances). The sync.Map is
+// intentionally unbounded: opsx is a short-lived CLI, so the handful of profile
+// mutexes it accrues are reclaimed when the process exits. See task 12.6.
 var citizenProfileLocks sync.Map // profile -> *sync.Mutex
 
 func citizenProfileLock(profile string) *sync.Mutex {
@@ -51,7 +53,12 @@ func citizenProfileLock(profile string) *sync.Mutex {
 // its profile name. If an unexpired citizen profile is already cached it is
 // reused without a second AssumeRole; otherwise it assumes the citizen role
 // using cached master credentials (returning ErrMasterExpired if those are
-// missing or stale).
+// missing or stale). The assume-and-write path runs inside the shared advisory
+// file lock and re-checks reuse there, so two opsx PROCESSES switching to the
+// same profile at the same time issue at most one AssumeRole (credential-store
+// "Single-flight citizen switch"); the second process reuses what the first
+// wrote. The STS call's duration is spent holding the lock, so other opsx
+// writers wait at most the bounded lock-acquisition timeout.
 func (s *CitizenService) Use(ctx context.Context, alias, mode string) (string, error) {
 	mode, err := config.NormalizeMode(mode)
 	if err != nil {
@@ -66,45 +73,64 @@ func (s *CitizenService) Use(ctx context.Context, alias, mode string) (string, e
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Reuse an existing, unexpired citizen profile — switch in seconds, no STS.
+	// Lock-free fast path: reuse a cached, unexpired profile without
+	// contending on the shared file lock (atomic writes keep reads
+	// consistent). Only a miss pays for the locked transaction.
 	if reusable, err := s.citizenReusable(profile); err != nil {
 		return "", err
 	} else if reusable {
 		return profile, nil
 	}
 
-	master, err := s.validMaster(mode)
-	if err != nil {
-		return "", err
-	}
-
-	roleARN, err := s.Cfg.CitizenRoleARN(alias, mode)
-	if err != nil {
-		return "", err
-	}
-
-	region, err := s.Cfg.ResolveCitizenRegion(alias)
-	if err != nil {
-		return "", err
-	}
-
-	citizen, expiry, err := s.Assume(ctx, master, roleARN, SessionName(), region)
-	if err != nil {
-		return "", fmt.Errorf("assume citizen role %s: %w", alias, err)
-	}
-
-	if err := s.Creds.Write(ctx, profile, citizen); err != nil {
-		return "", err
-	}
-	if err := s.State.Put(ctx, profile, state.Entry{
-		Expiry:    expiry,
-		Account:   alias,
-		Mode:      mode,
-		UpdatedAt: s.now(),
-	}); err != nil {
+	if err := s.useUnderSharedLock(ctx, profile, alias, mode); err != nil {
 		return "", err
 	}
 	return profile, nil
+}
+
+// useUnderSharedLock runs the miss path of Use as one transaction under the
+// shared advisory file lock: re-check reuse (another process may have written
+// while we waited), assume, then commit credentials and state in the SAME
+// lock window. Everything it calls must be lock-free or *SharedLockHeld —
+// acquiring the lock again here would self-deadlock.
+func (s *CitizenService) useUnderSharedLock(ctx context.Context, profile, alias, mode string) error {
+	return lock.With(ctx, s.Creds.lockPath, func() error {
+		if reusable, err := s.citizenReusable(profile); err != nil {
+			return err
+		} else if reusable {
+			return nil
+		}
+
+		master, err := s.validMaster(mode)
+		if err != nil {
+			return err
+		}
+
+		roleARN, err := s.Cfg.CitizenRoleARN(alias, mode)
+		if err != nil {
+			return err
+		}
+
+		region, err := s.Cfg.ResolveCitizenRegion(alias)
+		if err != nil {
+			return err
+		}
+
+		citizen, expiry, err := s.Assume(ctx, master, roleARN, SessionName(), region)
+		if err != nil {
+			return fmt.Errorf("assume citizen role %s: %w", alias, err)
+		}
+
+		if err := s.Creds.writeProfile(profile, citizen); err != nil {
+			return err
+		}
+		return s.State.PutSharedLockHeld(profile, state.Entry{
+			Expiry:    expiry,
+			Account:   alias,
+			Mode:      mode,
+			UpdatedAt: s.now(),
+		})
+	})
 }
 
 // citizenReusable reports whether the citizen profile is cached and unexpired.

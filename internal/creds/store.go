@@ -48,18 +48,25 @@ func NewStore(path, lockPath string) *Store {
 // lines, and all other profiles. Empty values are omitted (no `key = ` lines).
 // The file is created 0600 and its directory 0700.
 func (s *Store) Write(ctx context.Context, profile string, c Credentials) error {
+	return lock.With(ctx, s.lockPath, func() error {
+		return s.writeProfile(profile, c)
+	})
+}
+
+// writeProfile upserts without acquiring the lock. It is safe only when the
+// caller already holds the shared opsx lock at s.lockPath (Use does, to keep
+// its reuse re-check, Assume, and writes in one cross-process window).
+func (s *Store) writeProfile(profile string, c Credentials) error {
 	kv := map[string]string{
 		keyAccessKeyID:     c.AccessKeyID,
 		keySecretAccessKey: c.SecretAccessKey,
 		keySessionToken:    c.SessionToken,
 	}
-	return lock.With(ctx, s.lockPath, func() error {
-		data, err := s.read()
-		if err != nil {
-			return err
-		}
-		return fsutil.AtomicWrite(s.path, upsertProfile(data, profile, kv), 0o600)
-	})
+	data, err := s.read()
+	if err != nil {
+		return err
+	}
+	return fsutil.AtomicWrite(s.path, upsertProfile(data, profile, kv), 0o600)
 }
 
 // Delete removes complete profile sections, preserving unrelated content.
