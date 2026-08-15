@@ -69,4 +69,7 @@ go test -bench=. -benchmem
 
 # Lint
 golangci-lint run ./...
+
+# Spec governance gate (strict openspec validation + no direct canonical-spec edits)
+make spec
 ```

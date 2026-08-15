@@ -34,6 +34,12 @@ lint:
 tidy:
 	go mod tidy
 
+# Spec governance gate: strict openspec validation for all changes and specs,
+# plus rejection of canonical-spec edits that lack a matching change movement.
+.PHONY: spec
+spec:
+	./scripts/spec-gate.sh
+
 .PHONY: clean
 clean:
 	rm -rf $(BIN_DIR)
