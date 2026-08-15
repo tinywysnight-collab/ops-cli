@@ -10,7 +10,7 @@ The system SHALL build as a single static Go binary named `opsx` with `CGO_ENABL
 #### Scenario: Build produces a static binary
 - **WHEN** `make build` runs on a clean checkout
 - **THEN** a single static binary `opsx` is produced with `CGO_ENABLED=0`
-- **AND** it cross-compiles for darwin and linux targets
+- **AND** `make cross` cross-compiles the darwin, linux, and windows targets in one invocation
 
 #### Scenario: Version is reported
 - **WHEN** `opsx --version` runs

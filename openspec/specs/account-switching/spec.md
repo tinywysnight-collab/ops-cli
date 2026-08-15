@@ -5,11 +5,11 @@
 Switch between AWS citizen accounts by short alias for the current terminal's mode using cached master credentials, with per-terminal isolation and credential reuse within the validity window.
 ## Requirements
 ### Requirement: Switch account by alias
-The system SHALL, on `opsx use <account-alias>`, assume the citizen role for the current terminal's mode using cached master credentials, write the `[<alias>.<mode>]` profile, update state, and complete in under 2 seconds without triggering MFA.
+The system SHALL, on `opsx use <account-alias>`, assume the citizen role for the current terminal's mode using cached master credentials, write the `[<alias>.<mode>]` profile, update state, and complete in seconds without triggering MFA (an SLO, not a hard deadline: lock acquisition alone may wait up to its bounded timeout under contention).
 
 The account alias MUST be validated against the current loaded config before any cached citizen profile is reused. A profile left behind from an older config MUST NOT allow switching to an account alias that has since been removed or is no longer valid.
 
-The citizen `AssumeRole` STS client MUST be built with the region resolved per the config "Configuration-driven STS region" rule (`accounts.<alias>.region` → `auth.region` → environment), so `opsx use` does not depend on an ambient `AWS_REGION`.
+The citizen `AssumeRole` STS client MUST be built with the region resolved per the config "Configuration-driven STS region" rule (`accounts.<alias>.region`, required and allowlisted per the config capability), so `opsx use` does not depend on an ambient `AWS_REGION`.
 
 When `opsx use` runs through shell integration (`shell-switch` or an installed wrapper), the terminal session SHALL also receive `AWS_REGION` and `AWS_DEFAULT_REGION` set to the account's resolved region. This lets subsequent `aws` CLI commands in that terminal use the configured session region without passing `--region`.
 
@@ -18,7 +18,7 @@ When `opsx use` runs through shell integration (`shell-switch` or an installed w
 #### Scenario: Successful account switch
 - **WHEN** `opsx use dev` runs with valid cached master creds for the current mode
 - **THEN** the citizen role is assumed using the account's resolved region, the `[dev.<mode>]` profile is written, and state is updated
-- **AND** it completes in under 2 seconds with no MFA
+- **AND** it completes in seconds with no MFA under normal conditions
 
 #### Scenario: Account switch exports session region
 - **WHEN** `opsx use dev` runs through shell integration

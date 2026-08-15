@@ -139,17 +139,17 @@ The system SHALL detect expired credentials by comparing recorded expiry against
 
 #### Scenario: Past expiry returns a sentinel
 - **WHEN** a profile whose recorded expiry is in the past is checked
-- **THEN** `ErrMasterExpired` or `ErrCitizenExpired` is returned
+- **THEN** `ErrMasterExpired` is returned
 - **AND** it is detectable via `errors.Is`
 
 #### Scenario: Expiry uses a skew buffer
 - **WHEN** a profile's recorded expiry is within the safety buffer (e.g. 2 minutes) of now
 - **THEN** it is treated as expired so no switch assumes with about-to-lapse credentials
 
-#### Scenario: ErrCitizenExpired is reachable or removed
-- **WHEN** a still-cached citizen profile is consulted and found stale
-- **THEN** `ErrCitizenExpired` is returned by a real code path
-- **AND** if no such path exists, the unused sentinel is removed rather than left dead
+#### Scenario: Expired citizen cache refreshes transparently
+- **WHEN** a citizen profile's recorded expiry has lapsed and the operator switches to it again
+- **THEN** no citizen-expiry sentinel is surfaced to the operator
+- **AND** the profile is re-ensured through the normal assume/reuse path
 
 #### Scenario: Expiry sentinel formatted for the user
 - **WHEN** an expiry sentinel reaches the top-level handler

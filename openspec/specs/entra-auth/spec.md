@@ -3,9 +3,7 @@
 ## Purpose
 
 Authenticate once with Entra + ADFS + MFA behind a pluggable SAML seam, exchange the assertion for master STS credentials for both roles, collect the password securely, honor context during MFA, sanitize the STS session name, route through the system proxy, and exercise the flow end-to-end against a fake provider.
-
 ## Requirements
-
 ### Requirement: Authentication behind a pluggable SAML seam
 The system SHALL perform Entra authentication exclusively through a `SAMLProvider.FetchAssertion(ctx, role)` seam in `internal/auth`. No Entra/HTTP logic MAY leak outside `internal/auth`; tests MUST use a fake provider.
 
@@ -65,7 +63,7 @@ The system SHALL fetch the SAML assertion before building the AWS STS client. Th
 - **THEN** `[master_admin]` and `[master_awsopr]` caches coexist without overwriting each other
 
 ### Requirement: Secure password collection
-The system SHALL read the login password with no echo, using `OPSX_PASSWORD` instead of prompting when that env var is set. The password MUST never be written to config, credentials, state, or logs, and MUST be held as `[]byte` and zeroized after use.
+The system SHALL read the login password with no echo, using `OPSX_PASSWORD` instead of prompting when that env var is set. The password MUST never be written to config, credentials, state, or logs. On the interactive path it is held as `[]byte` and zeroized after use; when supplied via `OPSX_PASSWORD` it is inherently a process-visible environment string, and HTTP form encoding necessarily produces a transient encoded copy — both are documented trade-offs rather than zeroizable buffers.
 
 #### Scenario: No-echo prompt and env fallback
 - **WHEN** login collects the password
@@ -114,3 +112,4 @@ The system SHALL route all Entra HTTP and AWS STS calls through the system proxy
 - **WHEN** Entra HTTP and STS calls are made with system proxy env vars set
 - **THEN** they use the system proxy
 - **AND** no proxy is hardcoded in code
+
